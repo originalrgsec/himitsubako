@@ -33,9 +33,9 @@ Combined, you get: encrypted secrets committed to git, decrypted into your shell
 **When you need the library**, himitsubako provides:
 
 1. A Python API for runtime credential lookup, rotation, and backend switching
-2. A CLI for interactive secret management (`himitsubako get`, `himitsubako set`, `himitsubako rotate`)
+2. A CLI for interactive secret management (`hmb get`, `hmb set`, `hmb rotate`)
 3. A [`pydantic-settings`](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) source for declarative credential loading in Python applications
-4. Opinionated scaffolding (`himitsubako init`) that creates your age key, writes the `.sops.yaml`, generates an example `.envrc`, and encrypts an empty secrets file — all in one command
+4. Opinionated scaffolding (`hmb init`) that creates your age key, writes the `.sops.yaml`, generates an example `.envrc`, and encrypts an empty secrets file — all in one command
 5. Additional backends for cases where SOPS doesn't fit: macOS Keychain (via `keyring`), Bitwarden CLI (via `bw` subprocess), environment variables
 
 ## Backends
@@ -62,7 +62,7 @@ Initialize a project:
 
 ```sh
 cd my-project/
-himitsubako init
+hmb init
 ```
 
 That creates: an age keypair (if you don't have one), `.sops.yaml` with your public key as the recipient, an empty encrypted `.secrets.enc.yaml`, a `.envrc` that auto-loads the secrets via direnv, and a `.himitsubako.yaml` config file.
@@ -70,7 +70,7 @@ That creates: an age keypair (if you don't have one), `.sops.yaml` with your pub
 Add a secret:
 
 ```sh
-himitsubako set DEVTO_API_KEY
+hmb set DEVTO_API_KEY
 # prompts for value with masked input, encrypts, writes to .secrets.enc.yaml
 ```
 
@@ -91,7 +91,7 @@ key = get("DEVTO_API_KEY")
 Rotate the master age key:
 
 ```sh
-himitsubako rotate-key --new-key ~/.config/sops/age/keys.txt.new
+hmb rotate-key --new-key ~/.config/sops/age/keys.txt.new
 # re-encrypts every .secrets.enc.yaml in configured projects with the new key
 ```
 
@@ -119,7 +119,7 @@ Now `AppSettings()` pulls from himitsubako first, then falls back to environment
 ## Why not ...?
 
 **Why not just use SOPS directly?**
-You can, and for many projects that's the right answer. himitsubako adds value when: (a) you want a consistent Python API across SOPS and other backends, (b) you need programmatic credential rotation mid-process, (c) you want `pydantic-settings` integration, or (d) you want the opinionated `init` command that wires everything up correctly the first time. If none of those apply, use SOPS directly — that's exactly the primary pattern this library endorses.
+You can, and for many projects that's the right answer. himitsubako adds value when: (a) you want a consistent Python API across SOPS and other backends, (b) you need programmatic credential rotation mid-process, (c) you want `pydantic-settings` integration, or (d) you want the opinionated `hmb init` command that wires everything up correctly the first time. If none of those apply, use SOPS directly — that's exactly the primary pattern this library endorses.
 
 **Why not [teller](https://github.com/tellerops/teller)?**
 teller is excellent and covers a broader backend matrix than himitsubako. It's written in Go. If you're a Go developer or want a language-agnostic CLI, teller is probably a better fit. himitsubako is Python-native — you can import it, not just shell out to it — which matters if you want programmatic access in Python code or integration with `pydantic-settings`.
