@@ -22,7 +22,19 @@
 #   astral-sh/setup-uv             v5.4.1   0c5e2b8115b80b4c7c5ddf6ffdd634974642d182
 #   actions/upload-artifact        v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02
 #   actions/download-artifact      v4.3.0   d3f86a106a0bac45b974a628896c90dbdf5c8093
-#   pypa/gh-action-pypi-publish    v1.13.0  106e0b0b7c337fa67ed433972f777c6357f78598
+#
+# Docker container action exception:
+#   pypa/gh-action-pypi-publish is a Docker container action whose
+#   registry image is tagged by release version, not by commit SHA.
+#   Pinning to a commit SHA causes the action wrapper to attempt
+#   `docker pull ghcr.io/pypa/gh-action-pypi-publish:<sha>`, which
+#   fails with `manifest unknown` because no SHA-tagged image
+#   exists. PyPA's published guidance for this action is to pin to
+#   a specific version tag instead. We pin to v1.13.0 (released
+#   2025-09-04, well past the 7-day quarantine window) and accept
+#   the slightly weaker supply-chain posture for this one action.
+#   PyPA does not move version tags, so the trust delta vs SHA
+#   pinning is small in practice.
 #
 # Binary pins — same as ci.yml:
 #   sops v3.12.2  14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
@@ -188,7 +200,9 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI via Trusted Publishers
-        uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598  # v1.13.0
+        # Tag-pinned (NOT SHA-pinned) — see the "Docker container action
+        # exception" note in the header. v1.13.0 release is 2025-09-04.
+        uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           packages-dir: dist/
           # No `password:` — OIDC Trusted Publisher binding on PyPI
