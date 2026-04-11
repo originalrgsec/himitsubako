@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 0.3.0
+
+### Added
+
+- **HMB-S018 — `hmb delete` CLI command.** Removes a secret from the
+  configured backend. `hmb delete KEY` prompts for confirmation and
+  names the resolved target backend (e.g., the concrete backend under
+  `BackendRouter`, not the router wrapper). Flags: `--force` (alias
+  `--yes`) skips the prompt; `--missing-ok` exits 0 silently if the
+  key is absent. Exit codes: `0` success, `1` key not found, `2`
+  backend error (e.g., env backend read-only). Routed dispatch hits
+  the target backend directly via a single `resolve()` call. CLI
+  wiring only — all backend `delete()` methods already existed.
+
 ## [0.2.0] - 2026-04-11
 
 Sprint 2 ships the alternate-backend track and the per-credential

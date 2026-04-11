@@ -33,7 +33,7 @@ Combined, you get: encrypted secrets committed to git, decrypted into your shell
 **When you need the library**, himitsubako provides:
 
 1. A Python API for runtime credential lookup, rotation, and backend switching
-2. A CLI for interactive secret management (`hmb get`, `hmb set`, `hmb rotate`)
+2. A CLI for interactive secret management (`hmb get`, `hmb set`, `hmb list`, `hmb delete`, `hmb rotate`)
 3. A [`pydantic-settings`](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) source for declarative credential loading in Python applications
 4. Opinionated scaffolding (`hmb init`) that creates your age key, writes the `.sops.yaml`, generates an example `.envrc`, and encrypts an empty secrets file — all in one command
 5. Additional backends for cases where SOPS doesn't fit: macOS Keychain (via `keyring`), Bitwarden CLI (via `bw` subprocess), environment variables
@@ -72,6 +72,14 @@ Add a secret:
 ```sh
 hmb set DEVTO_API_KEY
 # prompts for value with masked input, encrypts, writes to .secrets.enc.yaml
+```
+
+Delete a secret:
+
+```sh
+hmb delete DEVTO_API_KEY
+# prompts for confirmation; pass --force (alias --yes) to skip,
+# or --missing-ok to exit 0 silently if the key is absent
 ```
 
 Read it in Python:

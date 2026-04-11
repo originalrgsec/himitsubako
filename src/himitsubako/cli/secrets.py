@@ -9,7 +9,7 @@ import click
 
 from himitsubako.backends.env import EnvBackend
 from himitsubako.config import find_config, load_config
-from himitsubako.errors import BackendError
+from himitsubako.errors import BackendError, SecretNotFoundError
 from himitsubako.router import BackendRouter
 
 if TYPE_CHECKING:
@@ -126,6 +126,70 @@ def direnv_export() -> None:
     envrc_path = config_path.parent / ".envrc"
     update_envrc(envrc_path, secrets_file=config.sops.secrets_file)
     click.echo(f"Updated {envrc_path}")
+
+
+@click.command("delete")
+@click.argument("key")
+@click.option(
+    "--force",
+    "--yes",
+    "force",
+    is_flag=True,
+    default=False,
+    help="Skip the interactive confirmation prompt.",
+)
+@click.option(
+    "--missing-ok",
+    is_flag=True,
+    default=False,
+    help="Exit 0 silently if the key does not exist.",
+)
+def delete_secret(key: str, force: bool, missing_ok: bool) -> None:
+    """Delete a secret by key.
+
+    Exit codes:
+        0  success (or confirmation declined, or --missing-ok hit)
+        1  secret not found (unless --missing-ok)
+        2  backend error (e.g. read-only backend, permission denied)
+    """
+    try:
+        backend = _resolve_backend()
+    except BackendError as exc:
+        click.echo(f"Error: {exc.detail}", err=True)
+        sys.exit(2)
+
+    # Resolve once so the prompt names the target backend and the delete
+    # dispatches directly to it (avoids a redundant router lookup between
+    # prompt and dispatch).
+    target = backend
+    if isinstance(backend, BackendRouter):
+        try:
+            target = backend.resolve(key)
+        except BackendError as exc:
+            click.echo(f"Error: {exc.detail}", err=True)
+            sys.exit(2)
+
+    if not force:
+        confirmed = click.confirm(
+            f"Delete secret '{key}' from {target.backend_name}?",
+            default=False,
+        )
+        if not confirmed:
+            click.echo("Aborted.")
+            return
+
+    try:
+        target.delete(key)
+    except SecretNotFoundError:
+        if missing_ok:
+            return
+        click.echo(f"Error: secret '{key}' not found", err=True)
+        sys.exit(1)
+    except BackendError as exc:
+        click.echo(f"Error: {exc.detail}", err=True)
+        sys.exit(2)
+
+    click.echo(f"deleted {key}")
 
 
 @click.command("list")
