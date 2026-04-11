@@ -8,16 +8,20 @@ from typing import TYPE_CHECKING
 import click
 
 from himitsubako.backends.env import EnvBackend
-from himitsubako.backends.sops import SopsBackend
 from himitsubako.config import find_config, load_config
 from himitsubako.errors import BackendError
+from himitsubako.router import BackendRouter
 
 if TYPE_CHECKING:
     from himitsubako.backends.protocol import SecretBackend
 
 
 def _resolve_backend() -> SecretBackend:
-    """Resolve the backend from the nearest .himitsubako.yaml config."""
+    """Resolve the BackendRouter from the nearest .himitsubako.yaml config.
+
+    Returns a BackendRouter so all CLI commands transparently support
+    per-credential routing. The router itself implements SecretBackend.
+    """
     from pathlib import Path as _Path
 
     config_path = find_config(_Path.cwd())
@@ -25,18 +29,7 @@ def _resolve_backend() -> SecretBackend:
         raise click.ClickException("no .himitsubako.yaml found (run 'hmb init' first)")
 
     config = load_config(config_path)
-    project_dir = config_path.parent
-
-    if config.default_backend == "sops":
-        return SopsBackend(
-            secrets_file=str(project_dir / config.sops.secrets_file),
-            sops_bin=config.sops.bin,
-        )
-
-    if config.default_backend == "env":
-        return EnvBackend(prefix=config.env.prefix)
-
-    raise click.ClickException(f"backend '{config.default_backend}' not yet implemented")
+    return BackendRouter(config, project_dir=config_path.parent)
 
 
 def _stdout_is_tty() -> bool:
@@ -101,7 +94,14 @@ def list_secrets() -> None:
     except BackendError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    if isinstance(backend, EnvBackend) and not backend.prefix:
+    # Peek through the router to detect an unprefixed env default and warn.
+    default = backend
+    if isinstance(backend, BackendRouter):
+        try:
+            default = backend.resolve("__probe_for_default__")
+        except BackendError:
+            default = None
+    if isinstance(default, EnvBackend) and not default.prefix:
         click.echo(
             "Warning: env backend has no prefix configured; "
             "listing all process environment variables. Set 'env.prefix' "

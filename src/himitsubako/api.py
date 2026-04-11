@@ -13,46 +13,43 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from himitsubako.backends.env import EnvBackend
 from himitsubako.backends.sops import SopsBackend
+from himitsubako.config import HimitsubakoConfig, find_config, load_config
+from himitsubako.router import BackendRouter
 
 if TYPE_CHECKING:
     from himitsubako.backends.protocol import SecretBackend
-from himitsubako.config import find_config, load_config
 
 
 def _resolve_backend(cwd: Path | None = None) -> SecretBackend:
-    """Resolve the appropriate backend based on config files.
+    """Resolve the appropriate backend (or router) based on config files.
 
     Resolution order:
-    1. Walk up from cwd looking for .himitsubako.yaml
-    2. If found, use the configured default_backend (sops or env)
-    3. If not found but .sops.yaml exists in cwd, use sops backend with defaults
-    4. Fall back to read-only env backend with no prefix
+    1. Walk up from cwd looking for .himitsubako.yaml. If found, return a
+       BackendRouter built from the config. The router handles per-credential
+       routing transparently and falls back to `default_backend` for any key
+       not matched by `credentials:`.
+    2. If not found but .sops.yaml exists in cwd, return a SopsBackend with
+       default config (legacy v0.1.x behavior).
+    3. Fall back to a read-only EnvBackend() with no prefix.
     """
     working_dir = cwd or Path.cwd()
 
     config_path = find_config(working_dir)
     if config_path is not None:
         config = load_config(config_path)
-        project_dir = config_path.parent
+        return BackendRouter(config, project_dir=config_path.parent)
 
-        if config.default_backend == "sops":
-            return SopsBackend(
-                secrets_file=str(project_dir / config.sops.secrets_file),
-                sops_bin=config.sops.bin,
-            )
-
-        if config.default_backend == "env":
-            return EnvBackend(prefix=config.env.prefix)
-
-    # Check for .sops.yaml without .himitsubako.yaml
+    # .sops.yaml-only fallback (legacy v0.1.x)
     sops_yaml = working_dir / ".sops.yaml"
     if sops_yaml.exists():
         return SopsBackend(secrets_file=str(working_dir / ".secrets.enc.yaml"))
 
-    # Fallback to read-only env backend with no prefix
-    return EnvBackend()
+    # Final fallback: read-only env backend wrapped in a router so the rest of
+    # the codebase always works against a uniform router interface.
+    return BackendRouter(
+        HimitsubakoConfig(default_backend="env"), project_dir=working_dir
+    )
 
 
 def get(key: str) -> str | None:

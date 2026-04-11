@@ -48,6 +48,30 @@ class EnvConfig(BaseModel):
     prefix: str = ""
 
 
+class CredentialRoute(BaseModel):
+    """Per-credential routing override.
+
+    A `credentials:` entry in `.himitsubako.yaml` may name an exact key
+    or a glob pattern (`fnmatch` syntax). Each entry must specify a
+    `backend` field; routes inherit the project-level backend config
+    sections (`sops:`, `keychain:`, etc.) for connection details.
+    """
+
+    model_config = {"frozen": True, "extra": "forbid"}
+
+    backend: str
+
+    @field_validator("backend")
+    @classmethod
+    def _validate_backend(cls, v: str) -> str:
+        if v not in _VALID_BACKENDS:
+            raise ValueError(
+                f"unknown backend '{v}' in credentials route. "
+                f"Choose from: {', '.join(sorted(_VALID_BACKENDS))}"
+            )
+        return v
+
+
 class HimitsubakoConfig(BaseModel):
     """Top-level configuration parsed from .himitsubako.yaml."""
 
@@ -58,6 +82,7 @@ class HimitsubakoConfig(BaseModel):
     keychain: KeychainConfig = KeychainConfig()
     bitwarden: BitwardenConfig = BitwardenConfig()
     env: EnvConfig = EnvConfig()
+    credentials: dict[str, CredentialRoute] = {}
 
     @field_validator("default_backend")
     @classmethod
