@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 
 import click
 
+from himitsubako.backends.env import EnvBackend
 from himitsubako.backends.sops import SopsBackend
 from himitsubako.config import find_config, load_config
 from himitsubako.errors import BackendError
 
+if TYPE_CHECKING:
+    from himitsubako.backends.protocol import SecretBackend
 
-def _resolve_backend() -> SopsBackend:
+
+def _resolve_backend() -> SecretBackend:
     """Resolve the backend from the nearest .himitsubako.yaml config."""
     from pathlib import Path as _Path
 
@@ -27,6 +32,9 @@ def _resolve_backend() -> SopsBackend:
             secrets_file=str(project_dir / config.sops.secrets_file),
             sops_bin=config.sops.bin,
         )
+
+    if config.default_backend == "env":
+        return EnvBackend(prefix=config.env.prefix)
 
     raise click.ClickException(f"backend '{config.default_backend}' not yet implemented")
 
@@ -90,6 +98,18 @@ def list_secrets() -> None:
     """List all secret key names."""
     try:
         backend = _resolve_backend()
+    except BackendError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if isinstance(backend, EnvBackend) and not backend.prefix:
+        click.echo(
+            "Warning: env backend has no prefix configured; "
+            "listing all process environment variables. Set 'env.prefix' "
+            "in .himitsubako.yaml to scope this to your application's keys.",
+            err=True,
+        )
+
+    try:
         keys = backend.list_keys()
     except BackendError as exc:
         raise click.ClickException(str(exc)) from exc

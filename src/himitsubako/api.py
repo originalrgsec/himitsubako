@@ -10,10 +10,10 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from himitsubako.backends.env import EnvBackend
 from himitsubako.backends.sops import SopsBackend
 
 if TYPE_CHECKING:
@@ -21,39 +21,14 @@ if TYPE_CHECKING:
 from himitsubako.config import find_config, load_config
 
 
-class _EnvFallbackBackend:
-    """Minimal env-var backend used as fallback when no config file exists."""
-
-    @property
-    def backend_name(self) -> str:
-        return "env"
-
-    def get(self, key: str) -> str | None:
-        return os.environ.get(key)
-
-    def set(self, key: str, value: str) -> None:
-        msg = (
-            "env fallback backend is read-only; "
-            "create a .himitsubako.yaml to use a writable backend"
-        )
-        raise RuntimeError(msg)
-
-    def delete(self, key: str) -> None:
-        msg = "env fallback backend is read-only"
-        raise RuntimeError(msg)
-
-    def list_keys(self) -> list[str]:
-        return list(os.environ.keys())
-
-
 def _resolve_backend(cwd: Path | None = None) -> SecretBackend:
     """Resolve the appropriate backend based on config files.
 
     Resolution order:
     1. Walk up from cwd looking for .himitsubako.yaml
-    2. If found, use the configured default_backend
+    2. If found, use the configured default_backend (sops or env)
     3. If not found but .sops.yaml exists in cwd, use sops backend with defaults
-    4. Fall back to env backend (read-only)
+    4. Fall back to read-only env backend with no prefix
     """
     working_dir = cwd or Path.cwd()
 
@@ -68,13 +43,16 @@ def _resolve_backend(cwd: Path | None = None) -> SecretBackend:
                 sops_bin=config.sops.bin,
             )
 
+        if config.default_backend == "env":
+            return EnvBackend(prefix=config.env.prefix)
+
     # Check for .sops.yaml without .himitsubako.yaml
     sops_yaml = working_dir / ".sops.yaml"
     if sops_yaml.exists():
         return SopsBackend(secrets_file=str(working_dir / ".secrets.enc.yaml"))
 
-    # Fallback to env
-    return _EnvFallbackBackend()
+    # Fallback to read-only env backend with no prefix
+    return EnvBackend()
 
 
 def get(key: str) -> str | None:
@@ -91,7 +69,11 @@ def set_secret(key: str, value: str) -> None:
     """Set a secret value for a key.
 
     Requires a writable backend (sops, keychain, or bitwarden-cli).
-    The env fallback backend is read-only.
+    The env backend is read-only and raises BackendError on set/delete.
+
+    Raises:
+        BackendError: when the resolved backend is read-only or the
+            underlying backend rejects the write.
     """
     backend = _resolve_backend()
     backend.set(key, value)

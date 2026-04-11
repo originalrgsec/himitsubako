@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import yaml
 from click.testing import CliRunner
 
-from tests.conftest import write_sops_config
+from tests.conftest import write_env_config, write_sops_config
 
 
 class TestHmbGet:
@@ -179,3 +179,93 @@ class TestHmbList:
                 result = runner.invoke(main, ["list"])
 
         assert result.exit_code == 0
+
+
+class TestEnvBackendDispatch:
+    """HMB-S007: hmb get/set/list dispatch through EnvBackend when configured."""
+
+    def test_get_with_env_backend_reads_environment(self, tmp_path, monkeypatch):
+        from himitsubako.cli import main
+
+        monkeypatch.setenv("HMB_ENV_TEST_KEY", "from_environment")
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_env_config(tmp_path)
+            result = runner.invoke(main, ["get", "HMB_ENV_TEST_KEY", "--reveal"])
+
+        assert result.exit_code == 0
+        assert "from_environment" in result.output
+
+    def test_get_with_env_backend_and_prefix(self, tmp_path, monkeypatch):
+        import os
+
+        from himitsubako.cli import main
+
+        for k in [k for k in os.environ if k.startswith("MYAPP_")]:
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.setenv("MYAPP_DB_PASSWORD", "prefixed_value")
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_env_config(tmp_path, prefix="MYAPP_")
+            result = runner.invoke(main, ["get", "DB_PASSWORD", "--reveal"])
+
+        assert result.exit_code == 0
+        assert "prefixed_value" in result.output
+
+    def test_get_missing_env_var_exits_nonzero(self, tmp_path, monkeypatch):
+        from himitsubako.cli import main
+
+        monkeypatch.delenv("DOES_NOT_EXIST_HMB", raising=False)
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_env_config(tmp_path)
+            result = runner.invoke(main, ["get", "DOES_NOT_EXIST_HMB"])
+
+        assert result.exit_code != 0
+
+    def test_set_with_env_backend_errors_read_only(self, tmp_path):
+        from himitsubako.cli import main
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_env_config(tmp_path)
+            result = runner.invoke(main, ["set", "ANY", "--value", "v"])
+
+        assert result.exit_code != 0
+        assert "read-only" in (result.output + (result.stderr or ""))
+
+    def test_list_with_env_backend_and_prefix_strips(
+        self, tmp_path, monkeypatch
+    ):
+        import os
+
+        from himitsubako.cli import main
+
+        for k in [k for k in os.environ if k.startswith("MYAPP_")]:
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.setenv("MYAPP_API_KEY", "x")
+        monkeypatch.setenv("MYAPP_DB_PASSWORD", "y")
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_env_config(tmp_path, prefix="MYAPP_")
+            result = runner.invoke(main, ["list"])
+
+        assert result.exit_code == 0
+        assert "API_KEY" in result.output
+        assert "DB_PASSWORD" in result.output
+
+    def test_list_with_env_backend_no_prefix_warns(self, tmp_path, monkeypatch):
+        """Empty prefix triggers a stderr warning before listing."""
+        from himitsubako.cli import main
+
+        monkeypatch.setenv("HMB_WARN_PROBE", "1")
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_env_config(tmp_path, prefix="")
+            result = runner.invoke(main, ["list"])
+
+        assert result.exit_code == 0
+        # Click 8.2+ keeps stderr separate by default; the warning lives there.
+        assert "no prefix configured" in result.stderr
+        # Probe variable still shows up because we are listing the full env.
+        assert "HMB_WARN_PROBE" in result.stdout

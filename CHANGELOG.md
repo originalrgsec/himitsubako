@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Sprint 2 (v0.2.0)
+
+### Added
+
+- **HMB-S007: First-class environment variable backend.** New
+  `EnvBackend(prefix: str = "")` class in `himitsubako.backends.env`
+  implements the `SecretBackend` protocol. Read-only by design:
+  `set` and `delete` raise `BackendError("env", "...")` because env
+  vars are set externally (shell, `.envrc`, container runtime). With
+  a configured prefix (`env.prefix: MYAPP_` in `.himitsubako.yaml`),
+  `get("DB_PASSWORD")` resolves `MYAPP_DB_PASSWORD` and `list_keys()`
+  returns matching variables with the prefix stripped. Wired through
+  both the CLI (`hmb get/set/list` dispatch when `default_backend: env`)
+  and the Python API (`himitsubako.get/set_secret/list_secrets`).
+- `hmb list` against an env backend with no prefix now emits a stderr
+  warning explaining that the full process environment is being listed
+  and pointing at `env.prefix` as the scoping mechanism. The warning
+  prevents users from accidentally believing `HOME`, `PATH`, and
+  inherited credentials are application secrets.
+
+### Removed
+
+- The internal `_EnvFallbackBackend` shim in `himitsubako.api` is gone.
+  The no-config fallback now returns the real `EnvBackend()`. Callers
+  that previously caught `RuntimeError` from `set_secret()` in the
+  no-config path must catch `BackendError` (or `HimitsubakoError`)
+  instead. No external imports of the shim existed.
+
 ## [0.1.1] - 2026-04-11
 
 Hardening release. Closes the four known limitations flagged at v0.1.0 ship time

@@ -22,6 +22,12 @@ def write_sops_config(path):
     (path / ".himitsubako.yaml").write_text(yaml.dump(SOPS_CONFIG))
 
 
+def write_env_config(path, prefix=""):
+    """Write an env-backend .himitsubako.yaml to the given directory."""
+    config = {"default_backend": "env", "env": {"prefix": prefix}}
+    (path / ".himitsubako.yaml").write_text(yaml.dump(config))
+
+
 @pytest.fixture
 def tmp_project(tmp_path):
     """Create a temporary project directory with a .himitsubako.yaml config."""
