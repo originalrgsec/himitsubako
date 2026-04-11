@@ -327,6 +327,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "keyring" },
+    { name = "pydantic-settings" },
+]
 dev = [
     { name = "mypy" },
     { name = "pytest" },
@@ -348,12 +352,14 @@ pydantic-settings = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
-    { name = "keyring", marker = "extra == 'keychain'", specifier = ">=24.0" },
+    { name = "keyring", marker = "extra == 'all'", specifier = ">=25.0,<26.0" },
+    { name = "keyring", marker = "extra == 'keychain'", specifier = ">=25.0,<26.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pydantic", specifier = ">=2.0,<3.0" },
-    { name = "pydantic-settings", marker = "extra == 'pydantic-settings'", specifier = ">=2.0" },
+    { name = "pydantic-settings", marker = "extra == 'all'", specifier = ">=2.13,<3.0" },
+    { name = "pydantic-settings", marker = "extra == 'pydantic-settings'", specifier = ">=2.13,<3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0,!=9.0.3" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -362,7 +368,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=24.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
 ]
-provides-extras = ["keychain", "pydantic-settings", "dev", "docs"]
+provides-extras = ["keychain", "pydantic-settings", "all", "dev", "docs"]
 
 [[package]]
 name = "idna"

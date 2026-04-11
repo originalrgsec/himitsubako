@@ -32,8 +32,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-keychain = ["keyring>=24.0"]
-pydantic-settings = ["pydantic-settings>=2.0"]
+# Optional backend extras. License-checked and health-scored 2026-04-11;
+# see Obsidian/code/oss-health-policy-scores.md for the audit trail.
+# Bitwarden CLI backend (HMB-S009) intentionally has no Python pip dep —
+# it shells out to the `bw` system binary, which is GPL-3.0 and only safe
+# under the External CLI Tool Invocation exemption in
+# Obsidian/code/allowed-licenses.md. Do NOT add bitwarden-sdk here;
+# that SDK has a non-OSI license (see COR-S037 retrospective).
+keychain = ["keyring>=25.0,<26.0"]
+pydantic-settings = ["pydantic-settings>=2.13,<3.0"]
+all = [
+    "keyring>=25.0,<26.0",
+    "pydantic-settings>=2.13,<3.0",
+]
 dev = [
     "pytest>=8.0,!=9.0.3",
     "pytest-cov>=5.0",
