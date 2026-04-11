@@ -5,30 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 0.3.0
+## [0.3.0] - 2026-04-11
 
-### Testing
+Sprint 3 closes himitsubako's path to PyPI. Seven stories land together:
+the CRUD closeout (`hmb delete`, `hmb status`), a real integration test
+suite that surfaced and fixed a latent SOPS encryption bug that had
+broken every `hmb set` since v0.1.0, a CI pipeline with SHA-pinned
+actions and verified `sops`+`age` binaries, a full mkdocs-material
+documentation site, local-only integration tests for keychain / bw /
+direnv, and the release workflow + Trusted Publishers OIDC binding
+that publishes to PyPI on every `v*.*.*` tag.
 
-- **HMB-S020 — local-only integration tests for keychain, bitwarden-cli,
-  and direnv.** Split out of S013 during Sprint 3 prep because these
-  three backends cannot run in default GitHub Actions CI (keychain
-  needs a macOS runner, bitwarden-cli needs an unlocked real vault,
-  direnv needs the binary + an allow-listed .envrc). New test modules
-  under `tests/integration/` opt in via the `macos`, `bitwarden`, and
-  `direnv` markers on top of the shared `integration` marker, and the
-  default CI workflow skips them via the `not macos and not bitwarden
-  and not direnv` marker filter. `test_keychain_real.py` uses a
-  UUID-prefixed service name and a finalizer that deletes every
-  created key even on test failure; `test_bitwarden_real.py` is
-  gated on an explicit `HMB_TEST_BW_SESSION` env var (separate from
-  the real `BW_SESSION` to force opt-in) and tears down every item
-  it created in a dedicated `himitsubako-test-<uuid>` folder;
-  `test_direnv_real.py` uses `direnv allow`/`direnv exec`/`direnv
-  deny` to run an isolated subprocess without touching the
-  developer's global direnv allow-list, and covers the duplicate-
-  marker refusal and shlex-quoted tricky-filename paths end-to-end.
-  14 new tests total (6 keychain + 4 direnv + 4 bitwarden-skipped-
-  without-session). Default unit suite and S013 CI subset unaffected.
+### Added — CLI commands
+
+- **HMB-S018 — `hmb delete` CLI command.** Removes a secret from the
+  configured backend with a confirmation prompt (`--force` / `--yes`
+  to skip, `--missing-ok` for idempotent cleanup). Routed dispatch
+  names the resolved target backend in the prompt rather than the
+  router wrapper. Exit codes: `0` success, `1` not found, `2` backend
+  error (env backend read-only, keychain denied, etc.).
+
+- **HMB-S019 — `hmb status` diagnostic command.** Read-only
+  introspection of the active configuration: config path, default
+  backend, SOPS binary + age recipients from `.sops.yaml`, the
+  `BackendRouter` table in declaration order, and a per-backend
+  ping-style availability check. `--json` emits a single JSON object
+  for scripting. Never reads, writes, or enumerates any credential.
+  Also adds a public `KeychainBackend.check_availability()` method.
+
+### Added — testing and infrastructure
+
+- **HMB-S013 — CI-runnable integration test suite.** New
+  `tests/integration/` tree with 26 real-binary tests for SOPS and env
+  backends, `BackendRouter` dispatch, and the full
+  `hmb init → set → get → list → delete → status` CLI flow. Excluded
+  from the default `uv run pytest` via `--ignore=tests/integration`;
+  run explicitly with `uv run pytest tests/integration/`.
+
+- **HMB-S014 — GitHub Actions CI pipeline.**
+  `.github/workflows/ci.yml` runs ruff check, ruff format check, mypy,
+  unit tests with a `--cov-fail-under=80` gate, and the S013
+  integration subset on every push to `main` and every PR. Matrix:
+  Python 3.12 and 3.13 on `ubuntu-latest`. Every `uses:` reference is
+  SHA-pinned; `sops` v3.12.2 and `age` v1.3.1 are installed from
+  upstream releases with SHA256 verification. Top-level
+  `permissions: contents: read`, concurrency group cancels stale
+  runs, no repo secrets consumed.
+
+- **HMB-S020 — local-only integration tests.** New test modules for
+  the backends that cannot run in default CI: `test_keychain_real.py`
+  (macOS login keychain with UUID-prefixed service and finalizer
+  teardown), `test_bitwarden_real.py` (gated on an explicit
+  `HMB_TEST_BW_SESSION` env var with per-test folder isolation), and
+  `test_direnv_real.py` (real `direnv allow`/`exec`/`deny` isolation,
+  covering duplicate-marker refusal and shlex-quoted tricky filenames
+  end-to-end). 14 new tests total.
+
+### Added — release infrastructure
+
+- **HMB-S016 — PyPI publish preparation.** `pyproject.toml` version
+  bumped to `0.3.0`; `src/himitsubako/__init__.py` `__version__`
+  matches. `project.urls` now declares Documentation and Changelog
+  URLs. New `CONTRIBUTING.md` (development setup, running unit vs
+  integration tests, dependency license discipline, release
+  checklist) and `SECURITY.md` (supported versions, private
+  vulnerability reporting via GitHub Security Advisories, in-scope
+  and out-of-scope boundaries, regression-guarded defense list). New
+  `.github/workflows/release.yml` triggered on final `v*.*.*` tags:
+  verify → build → publish jobs. Publish uses Trusted Publishers
+  OIDC (`pypa/gh-action-pypi-publish@v1.13.0`, SHA-pinned) bound to
+  the `pypi-release` GitHub Actions environment with a required-
+  reviewer approval gate. No long-lived PyPI API tokens. A build-job
+  guard asserts that the git tag, `pyproject.toml` version, and
+  `himitsubako.__version__` all agree before any artifact is
+  produced. Local smoke test before this commit: wheel and sdist
+  built via `python -m build`, `twine check dist/*` PASSED, scratch
+  venv install of the wheel reports `hmb, version 0.3.0`.
 
 ### Docs
 
@@ -45,83 +97,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GitHub Pages / Read the Docs / Cloudflare Pages selection is a
   follow-up decision.
 
-### CI / infrastructure
-
-- **HMB-S014 — GitHub Actions CI pipeline.** New `.github/workflows/ci.yml`
-  runs on push to `main` and every PR, matrix over Python 3.12 and 3.13.
-  Steps: ruff check, ruff format check, mypy, unit tests with `--cov-fail-under=80`,
-  and the HMB-S013 integration subset (sops + env, excluding `macos`,
-  `bitwarden`, and `direnv` markers for HMB-S020). Every `uses:` reference
-  is SHA-pinned per the supply-chain protection policy; `sops` v3.12.2 and
-  `age` v1.3.1 are installed from upstream GitHub releases with SHA256
-  verification against pinned env vars, not `apt-get install`. Top-level
-  `permissions: contents: read` enforces least privilege; a concurrency
-  group cancels stale runs on the same PR. Coverage XML is uploaded as an
-  artifact per Python version. No repository secrets consumed.
-- **Codebase-wide `ruff format` pass** so the format-check step stays
-  green (25 files reformatted). No behavior change.
-- **mypy strict pass.** One pre-existing type error in
-  `cli/secrets.py::list_secrets` (narrow-then-broaden assignment)
-  annotated as `SecretBackend | None`; mypy now clean over `src/`.
-
 ### Fixed
 
-- **HMB-S013 (discovered by new integration tests) — `SopsBackend._encrypt`
-  could not encrypt against a default-init'd vault.** The backend writes
-  to a `tempfile.mkstemp(suffix=".yaml")` tempfile and then calls
-  `sops --encrypt --in-place <tmpfile>`. sops applies `.sops.yaml`'s
-  `creation_rules` `path_regex` against the file it's operating on —
-  which is the tempfile name, not `.secrets.enc.yaml` — so sops aborts
-  with `error loading config: no matching creation rules found`. This
-  broke every `hmb set` / `hmb delete` / `hmb set`-triggered encrypt
-  path in v0.1.0 through v0.2.0; unit tests did not catch it because
-  subprocess was mocked. The fix passes `--filename-override
-  <real_secrets_file>` so sops applies the creation_rules against the
-  real target path. Requires sops >= 3.8.0 (the version that introduced
-  `--filename-override`); the README and backend table now document the
-  minimum. A unit regression test in `TestSopsBackendFilenameOverride`
-  pins argv ordering so the flag cannot silently drop.
+- **HMB-S013 (discovered by new integration tests) —
+  `SopsBackend._encrypt` could not encrypt against a default-init'd
+  vault.** The backend writes to a `tempfile.mkstemp(suffix=".yaml")`
+  tempfile and then calls `sops --encrypt --in-place <tmpfile>`.
+  sops applies `.sops.yaml`'s `creation_rules` `path_regex` against
+  the file it's operating on — which is the tempfile name, not
+  `.secrets.enc.yaml` — so sops aborts with `error loading config:
+  no matching creation rules found`. This broke every `hmb set` /
+  `hmb delete` / rotate path in v0.1.0 through v0.2.0; unit tests
+  did not catch it because subprocess was mocked. The fix passes
+  `--filename-override <real_secrets_file>` so sops applies the
+  creation_rules against the real target path. Requires
+  **sops >= 3.8.0** (the version that introduced `--filename-override`);
+  the README and backend table now document the minimum. A unit
+  regression test in `TestSopsBackendFilenameOverride` pins argv
+  ordering so the flag cannot silently drop.
 
-### Added
+### Chore
 
-- **HMB-S013 — integration test suite (CI-runnable subset).** New
-  `tests/integration/` directory with real-binary coverage for SOPS and
-  env backends, excluded from the default `uv run pytest` run via
-  `--ignore=tests/integration` so the unit suite stays fast. Run with
-  `uv run pytest tests/integration/`. Four test modules: SOPS round-trip
-  with mixed charsets + newlines + `$`/backticks + UTF-8 + a 1.5 kB
-  value, list/delete/not-found, file-mode 0600 regression guard
-  (T-010), and `hmb rotate-key` end-to-end with old-key-cannot-decrypt
-  verification; env backend prefix filtering, fallback chain, read-only
-  enforcement; full `hmb init → set → get → list → delete → list`
-  flow via CliRunner plus `hmb status` against real configs; and
-  `BackendRouter` dispatch with `CI_*` patterns routing to env while
-  SOPS is the default. 26 integration tests total. `hmb init`'s global
-  keypath is monkeypatched to a fixture key so tests never touch the
-  developer's `~/.config/sops/age/keys.txt`.
-
-- **HMB-S019 — `hmb status` diagnostic command.** Read-only introspection
-  of the active configuration. Prints the resolved config path, default
-  backend, SOPS binary (matching the HMB-S017 T-001 resolution order),
-  age recipients parsed from `.sops.yaml`, the `BackendRouter` table in
-  declaration order, and a one-line availability check per referenced
-  backend. Availability is determined by ping-style calls only — never
-  reads, writes, or enumerates any credential. `--json` emits the same
-  data as a single JSON object for scripting. Exit 0 even when some
-  backends are unavailable (unavailability is information); exit 1
-  only if the config file is malformed. Adds a public
-  `KeychainBackend.check_availability()` method so the status command
-  no longer depends on a private method.
-
-- **HMB-S018 — `hmb delete` CLI command.** Removes a secret from the
-  configured backend. `hmb delete KEY` prompts for confirmation and
-  names the resolved target backend (e.g., the concrete backend under
-  `BackendRouter`, not the router wrapper). Flags: `--force` (alias
-  `--yes`) skips the prompt; `--missing-ok` exits 0 silently if the
-  key is absent. Exit codes: `0` success, `1` key not found, `2`
-  backend error (e.g., env backend read-only). Routed dispatch hits
-  the target backend directly via a single `resolve()` call. CLI
-  wiring only — all backend `delete()` methods already existed.
+- Codebase-wide `ruff format` pass so the CI format-check stays green.
+- mypy strict pass over `src/`; one pre-existing type narrowing in
+  `cli/secrets.py::list_secrets` annotated as `SecretBackend | None`.
+- Register `bitwarden` and `direnv` pytest markers to support the
+  S020 opt-in local-only suites and the S014 CI filter.
 
 ## [0.2.0] - 2026-04-11
 

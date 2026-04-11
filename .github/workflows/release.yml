@@ -1,0 +1,196 @@
+# HMB-S016: Release workflow — publish to PyPI via Trusted Publishers (OIDC).
+#
+# Supply-chain notes
+# ------------------
+# - Same SHA-pinning policy as the CI workflow. Every `uses:` reference
+#   is pinned to a commit SHA, not a tag (supply-chain policy per
+#   Obsidian/code/supply-chain-protection.md). Tag pointers below the
+#   SHA are documentation only.
+# - `sops` and `age` are installed from upstream releases with SHA256
+#   verification, identical to the CI workflow. The release build only
+#   needs them for the integration test step; publish itself does not.
+# - **No long-lived PyPI API token.** Production publish uses Trusted
+#   Publishers (OIDC) bound to this repository + this workflow file +
+#   the `pypi-release` environment. The repository owner must configure
+#   the binding on pypi.org before the first release tag runs.
+# - The `pypi-release` environment has a required-reviewer gate so an
+#   accidental tag push cannot auto-publish. A human must approve the
+#   job before the publish step runs.
+#
+# Action pins (tag at pinning time → commit SHA)
+#   actions/checkout               v4.3.0   08eba0b27e820071cde6df949e0beb9ba4906955
+#   astral-sh/setup-uv             v5.4.1   0c5e2b8115b80b4c7c5ddf6ffdd634974642d182
+#   actions/upload-artifact        v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02
+#   actions/download-artifact      v4.3.0   d3f86a106a0bac45b974a628896c90dbdf5c8093
+#   pypa/gh-action-pypi-publish    v1.13.0  106e0b0b7c337fa67ed433972f777c6357f78598
+#
+# Binary pins — same as ci.yml:
+#   sops v3.12.2  14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
+#   age  v1.3.1   bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+
+name: release
+
+on:
+  push:
+    tags:
+      # Final v*.*.* tags only. Pre-release tags (v*-rc*, v*-beta*)
+      # are intentionally excluded until a decision is made on whether
+      # to publish them.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOPS_VERSION: v3.12.2
+  SOPS_LINUX_AMD64_SHA256: 14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
+  AGE_VERSION: v1.3.1
+  AGE_LINUX_AMD64_SHA256: bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+
+jobs:
+  verify:
+    name: verify (pre-publish CI gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ffdd634974642d182  # v5.4.1
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install sops (pinned + SHA256 verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          curl -fsSL -o sops-bin "$url"
+          echo "${SOPS_LINUX_AMD64_SHA256}  sops-bin" | sha256sum -c -
+          install -m 0755 sops-bin "$HOME/.local/bin/sops"
+          rm -f sops-bin
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install age (pinned + SHA256 verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-linux-amd64.tar.gz"
+          curl -fsSL -o age.tar.gz "$url"
+          echo "${AGE_LINUX_AMD64_SHA256}  age.tar.gz" | sha256sum -c -
+          tar -xzf age.tar.gz
+          install -m 0755 age/age "$HOME/.local/bin/age"
+          install -m 0755 age/age-keygen "$HOME/.local/bin/age-keygen"
+          rm -rf age age.tar.gz
+
+      - name: Install project (all extras + dev)
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check src tests
+
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+
+      - name: mypy
+        run: uv run mypy src
+
+      - name: Unit tests + coverage gate
+        run: >-
+          uv run pytest
+          --override-ini="addopts=-v --tb=short"
+          -m "not integration"
+          --cov=src/himitsubako
+          --cov-report=term-missing
+          --cov-fail-under=80
+
+      - name: Integration tests (S013 subset)
+        run: >-
+          uv run pytest tests/integration/
+          --override-ini="addopts=-v --tb=short"
+          -m "integration and not macos and not bitwarden and not direnv"
+
+  build:
+    name: build (wheel + sdist)
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ffdd634974642d182  # v5.4.1
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install project with publish extras
+        run: uv sync --all-extras --dev
+
+      - name: Verify tag matches pyproject.toml version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          pyproject_version=$(uv run python -c "import tomllib; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
+          init_version=$(uv run python -c "from himitsubako import __version__; print(__version__)")
+          if [[ "$pyproject_version" != "$version" ]]; then
+            echo "ERROR: tag $tag implies version $version but pyproject.toml has $pyproject_version" >&2
+            exit 1
+          fi
+          if [[ "$init_version" != "$version" ]]; then
+            echo "ERROR: tag $tag implies version $version but himitsubako.__version__ is $init_version" >&2
+            exit 1
+          fi
+          echo "Tag, pyproject.toml, and __version__ all agree on $version."
+
+      - name: Build sdist and wheel
+        run: uv run python -m build
+
+      - name: Twine check
+        run: uv run twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: publish to PyPI (Trusted Publishers OIDC)
+    needs: build
+    runs-on: ubuntu-latest
+    # Required-reviewer gate: the pypi-release environment must be
+    # configured on the repository (Settings → Environments) with at
+    # least one required reviewer (the maintainer). That reviewer is
+    # the human approval on every release.
+    environment:
+      name: pypi-release
+      url: https://pypi.org/project/himitsubako/
+    permissions:
+      # Needed for Trusted Publishers OIDC.
+      id-token: write
+      contents: read
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI via Trusted Publishers
+        uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598  # v1.13.0
+        with:
+          packages-dir: dist/
+          # No `password:` — OIDC Trusted Publisher binding on PyPI
+          # provides the short-lived token automatically.
+          verbose: true

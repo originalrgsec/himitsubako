@@ -1,6 +1,6 @@
 [project]
 name = "himitsubako"
-version = "0.2.0"
+version = "0.3.0"
 description = "Multi-backend credential abstraction for solo Python developers. SOPS+age, macOS Keychain, Bitwarden CLI, direnv, env vars."
 readme = "README.md"
 license = { text = "MIT" }
@@ -76,8 +76,10 @@ hmb = "himitsubako.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/originalrgsec/himitsubako"
+Documentation = "https://github.com/originalrgsec/himitsubako#readme"
 Issues = "https://github.com/originalrgsec/himitsubako/issues"
 Repository = "https://github.com/originalrgsec/himitsubako"
+Changelog = "https://github.com/originalrgsec/himitsubako/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
