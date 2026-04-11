@@ -85,6 +85,48 @@ def set_secret(key: str, value: str | None) -> None:
 
     click.echo(f"Set '{key}'.")
 
+    # Best-effort: ensure .envrc managed block exists when the resolved
+    # default backend is sops. Failures here never break the set operation.
+    _maybe_refresh_envrc()
+
+
+def _maybe_refresh_envrc() -> None:
+    """Update the project .envrc managed block if the default backend is sops."""
+    from pathlib import Path as _Path
+
+    from himitsubako.direnv import update_envrc
+
+    try:
+        config_path = find_config(_Path.cwd())
+        if config_path is None:
+            return
+        config = load_config(config_path)
+        if config.default_backend != "sops":
+            return
+        envrc_path = config_path.parent / ".envrc"
+        update_envrc(envrc_path, secrets_file=config.sops.secrets_file)
+    except (BackendError, OSError) as exc:
+        click.echo(
+            f"warning: could not refresh .envrc: {exc}", err=True
+        )
+
+
+@click.command("direnv-export")
+def direnv_export() -> None:
+    """Regenerate the himitsubako-managed block in .envrc."""
+    from pathlib import Path as _Path
+
+    from himitsubako.direnv import update_envrc
+
+    config_path = find_config(_Path.cwd())
+    if config_path is None:
+        raise click.ClickException("no .himitsubako.yaml found (run 'hmb init' first)")
+
+    config = load_config(config_path)
+    envrc_path = config_path.parent / ".envrc"
+    update_envrc(envrc_path, secrets_file=config.sops.secrets_file)
+    click.echo(f"Updated {envrc_path}")
+
 
 @click.command("list")
 def list_secrets() -> None:

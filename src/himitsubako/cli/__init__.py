@@ -6,7 +6,12 @@ import click
 
 from himitsubako.cli.init import init
 from himitsubako.cli.rotate import rotate_key
-from himitsubako.cli.secrets import get_secret, list_secrets, set_secret
+from himitsubako.cli.secrets import (
+    direnv_export,
+    get_secret,
+    list_secrets,
+    set_secret,
+)
 
 
 @click.group()
@@ -20,3 +25,4 @@ main.add_command(get_secret)
 main.add_command(set_secret)
 main.add_command(list_secrets)
 main.add_command(rotate_key)
+main.add_command(direnv_export)

@@ -8,6 +8,8 @@ from pathlib import Path
 import click
 import yaml
 
+from himitsubako.direnv import generate_envrc
+
 _DEFAULT_KEYS_PATH = Path.home() / ".config" / "sops" / "age" / "keys.txt"
 
 
@@ -92,14 +94,13 @@ def _build_sops_yaml(public_key: str) -> str:
 
 
 def _build_envrc(secrets_file: str) -> str:
-    """Generate .envrc content that sources decrypted secrets."""
-    return (
-        "# himitsubako-managed — edits between markers will be overwritten by hmb\n"
-        "# --- himitsubako start ---\n"
-        f'eval "$(sops -d --output-type dotenv {secrets_file} 2>/dev/null | '
-        "sed 's/^/export /')\" || true\n"
-        "# --- himitsubako end ---\n"
-    )
+    """Generate .envrc content that sources decrypted secrets.
+
+    Thin wrapper around himitsubako.direnv.generate_envrc — kept here so
+    existing v0.1.0 tests that import _build_envrc continue to work
+    while the canonical source moves into the direnv module.
+    """
+    return generate_envrc(secrets_file=secrets_file)
 
 
 def _build_config_yaml() -> str:
