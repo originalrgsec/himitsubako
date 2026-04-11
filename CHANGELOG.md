@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 0.3.0
 
+### Testing
+
+- **HMB-S020 — local-only integration tests for keychain, bitwarden-cli,
+  and direnv.** Split out of S013 during Sprint 3 prep because these
+  three backends cannot run in default GitHub Actions CI (keychain
+  needs a macOS runner, bitwarden-cli needs an unlocked real vault,
+  direnv needs the binary + an allow-listed .envrc). New test modules
+  under `tests/integration/` opt in via the `macos`, `bitwarden`, and
+  `direnv` markers on top of the shared `integration` marker, and the
+  default CI workflow skips them via the `not macos and not bitwarden
+  and not direnv` marker filter. `test_keychain_real.py` uses a
+  UUID-prefixed service name and a finalizer that deletes every
+  created key even on test failure; `test_bitwarden_real.py` is
+  gated on an explicit `HMB_TEST_BW_SESSION` env var (separate from
+  the real `BW_SESSION` to force opt-in) and tears down every item
+  it created in a dedicated `himitsubako-test-<uuid>` folder;
+  `test_direnv_real.py` uses `direnv allow`/`direnv exec`/`direnv
+  deny` to run an isolated subprocess without touching the
+  developer's global direnv allow-list, and covers the duplicate-
+  marker refusal and shlex-quoted tricky-filename paths end-to-end.
+  14 new tests total (6 keychain + 4 direnv + 4 bitwarden-skipped-
+  without-session). Default unit suite and S013 CI subset unaffected.
+
 ### Docs
 
 - **HMB-S015 — mkdocs-material documentation site.** New `docs/` tree
