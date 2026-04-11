@@ -112,7 +112,17 @@ def list_secrets() -> None:
     try:
         keys = backend.list_keys()
     except BackendError as exc:
-        raise click.ClickException(str(exc)) from exc
+        # Friendly handling for backends like keychain that cannot enumerate.
+        click.echo(
+            f"Backend '{exc.backend}' does not support listing: {exc.detail}",
+            err=True,
+        )
+        click.echo(
+            "See your project's secrets registry (.himitsubako.yaml) "
+            "for the expected key names.",
+            err=True,
+        )
+        return
 
     if not keys:
         click.echo("No secrets found.")

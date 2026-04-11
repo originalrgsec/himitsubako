@@ -38,6 +38,8 @@ class BitwardenConfig(BaseModel):
     model_config = {"frozen": True}
 
     folder: str = "himitsubako"
+    bin: str | None = None
+    unlock_command: str | None = None
 
 
 class EnvConfig(BaseModel):
