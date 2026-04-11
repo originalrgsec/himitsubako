@@ -7,7 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 0.3.0
 
+### Fixed
+
+- **HMB-S013 (discovered by new integration tests) — `SopsBackend._encrypt`
+  could not encrypt against a default-init'd vault.** The backend writes
+  to a `tempfile.mkstemp(suffix=".yaml")` tempfile and then calls
+  `sops --encrypt --in-place <tmpfile>`. sops applies `.sops.yaml`'s
+  `creation_rules` `path_regex` against the file it's operating on —
+  which is the tempfile name, not `.secrets.enc.yaml` — so sops aborts
+  with `error loading config: no matching creation rules found`. This
+  broke every `hmb set` / `hmb delete` / `hmb set`-triggered encrypt
+  path in v0.1.0 through v0.2.0; unit tests did not catch it because
+  subprocess was mocked. The fix passes `--filename-override
+  <real_secrets_file>` so sops applies the creation_rules against the
+  real target path. Requires sops >= 3.8.0 (the version that introduced
+  `--filename-override`); the README and backend table now document the
+  minimum. A unit regression test in `TestSopsBackendFilenameOverride`
+  pins argv ordering so the flag cannot silently drop.
+
 ### Added
+
+- **HMB-S013 — integration test suite (CI-runnable subset).** New
+  `tests/integration/` directory with real-binary coverage for SOPS and
+  env backends, excluded from the default `uv run pytest` run via
+  `--ignore=tests/integration` so the unit suite stays fast. Run with
+  `uv run pytest tests/integration/`. Four test modules: SOPS round-trip
+  with mixed charsets + newlines + `$`/backticks + UTF-8 + a 1.5 kB
+  value, list/delete/not-found, file-mode 0600 regression guard
+  (T-010), and `hmb rotate-key` end-to-end with old-key-cannot-decrypt
+  verification; env backend prefix filtering, fallback chain, read-only
+  enforcement; full `hmb init → set → get → list → delete → list`
+  flow via CliRunner plus `hmb status` against real configs; and
+  `BackendRouter` dispatch with `CI_*` patterns routing to env while
+  SOPS is the default. 26 integration tests total. `hmb init`'s global
+  keypath is monkeypatched to a fixture key so tests never touch the
+  developer's `~/.config/sops/age/keys.txt`.
 
 - **HMB-S019 — `hmb status` diagnostic command.** Read-only introspection
   of the active configuration. Prints the resolved config path, default

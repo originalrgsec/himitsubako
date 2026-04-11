@@ -88,7 +88,10 @@ packages = ["src/himitsubako"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+# Default run excludes the integration suite so `uv run pytest` and
+# `uv run pytest --cov=src` stay fast and unit-only. Run integration
+# explicitly via `uv run pytest tests/integration/`.
+addopts = "-v --tb=short --ignore=tests/integration"
 markers = [
     "unit: fast unit tests (default)",
     "integration: tests requiring external binaries (sops, age, bw, direnv)",

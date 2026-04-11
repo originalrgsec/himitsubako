@@ -6,6 +6,7 @@ import os
 import stat
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -321,6 +322,51 @@ class TestSopsBackendTimeout:
 
         leftover = list(tmp_path.glob("*.yaml"))
         assert leftover == [], f"temp files not cleaned up: {leftover}"
+
+
+class TestSopsBackendFilenameOverride:
+    """Regression guard: encrypt argv must pass --filename-override with the
+    real target filename so sops applies creation_rules to the target, not
+    the mkstemp-generated tempfile name. Discovered by HMB-S013 integration
+    tests; latent bug in v0.1.0 through v0.2.0."""
+
+    def test_encrypt_argv_passes_filename_override_target(self, tmp_path):
+        from himitsubako.backends.sops import SopsBackend
+
+        secrets_file = tmp_path / ".secrets.enc.yaml"
+        backend = SopsBackend(secrets_file=str(secrets_file))
+
+        decrypted_empty = yaml.dump({})
+        captured: list[list[str]] = []
+
+        def fake_run(*args, **kwargs):
+            argv = list(args[0])
+            captured.append(argv)
+            if "--decrypt" in argv:
+                return MagicMock(returncode=0, stdout=decrypted_empty, stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            backend.set("KEY", "value")
+
+        encrypt_calls = [a for a in captured if "--encrypt" in a]
+        assert encrypt_calls, "expected at least one sops --encrypt call"
+        argv = encrypt_calls[0]
+        assert "--filename-override" in argv, argv
+        override_idx = argv.index("--filename-override")
+        assert argv[override_idx + 1] == str(secrets_file), (
+            "--filename-override must carry the real target path, not the tempfile"
+        )
+        # --filename-override must come before --in-place so sops parses
+        # the override value as the flag argument, not as a positional.
+        inplace_idx = argv.index("--in-place")
+        assert override_idx < inplace_idx, (
+            f"--filename-override must precede --in-place in argv: {argv}"
+        )
+        # --in-place is immediately followed by the tempfile positional.
+        positional = argv[inplace_idx + 1]
+        assert positional != str(secrets_file)
+        assert Path(positional).parent == secrets_file.parent
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes only")

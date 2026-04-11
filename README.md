@@ -42,7 +42,7 @@ Combined, you get: encrypted secrets committed to git, decrypted into your shell
 
 | Backend | Use when | Requires |
 |---|---|---|
-| **sops** (primary) | You want encrypted secrets in git, portable across machines, rotatable with one command | `sops` + `age` binaries on PATH |
+| **sops** (primary) | You want encrypted secrets in git, portable across machines, rotatable with one command | `sops` >= 3.8 + `age` binaries on PATH |
 | **keychain** | You want OS-native storage that survives repo deletion, typically for personal long-lived tokens | macOS (Linux/Windows via `keyring` fallback) |
 | **bitwarden-cli** | You already use Bitwarden and want your dev credentials in the same vault as your passwords | Bitwarden account, `bw` CLI on PATH |
 | **env** | 12-factor simplicity, CI/CD pipelines, containers with env injection | Nothing |
