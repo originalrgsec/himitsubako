@@ -22,9 +22,7 @@ from himitsubako.errors import BackendError
 
 _START = "# --- himitsubako start ---"
 _END = "# --- himitsubako end ---"
-_HEADER_COMMENT = (
-    "# himitsubako-managed — edits between markers will be overwritten by hmb"
-)
+_HEADER_COMMENT = "# himitsubako-managed — edits between markers will be overwritten by hmb"
 
 
 def generate_envrc(secrets_file: str = ".secrets.enc.yaml") -> str:

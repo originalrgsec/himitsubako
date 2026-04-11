@@ -102,9 +102,7 @@ def _check_keychain(service: str) -> dict[str, str]:
 
 
 def _check_bitwarden(config_bin: str | None) -> dict[str, str]:
-    bin_path = (
-        os.environ.get(_BW_BIN_ENV, "").strip() or config_bin or "bw"
-    )
+    bin_path = os.environ.get(_BW_BIN_ENV, "").strip() or config_bin or "bw"
     try:
         result = subprocess.run(
             [bin_path, "status"],

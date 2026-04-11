@@ -65,9 +65,7 @@ class TestBitwardenBackendGet:
 
         item_json = json.dumps({"name": "MY_KEY", "notes": "secret_value"})
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=item_json, stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=item_json, stderr="")
             result = backend.get("MY_KEY")
 
         assert result == "secret_value"
@@ -82,9 +80,7 @@ class TestBitwardenBackendGet:
         backend = BitwardenBackend(folder="myproject")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1, stdout="", stderr="Not found."
-            )
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="Not found.")
             assert backend.get("DOES_NOT_EXIST") is None
 
     def test_get_locked_vault_raises(self, monkeypatch):
@@ -95,9 +91,7 @@ class TestBitwardenBackendGet:
         backend = BitwardenBackend(folder="myproject")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1, stdout="", stderr="Vault is locked."
-            )
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="Vault is locked.")
             with pytest.raises(BackendError, match=r"locked"):
                 backend.get("ANY")
 
@@ -108,10 +102,13 @@ class TestBitwardenBackendGet:
         monkeypatch.setenv("BW_SESSION", "tok")
         backend = BitwardenBackend(folder="myproject")
 
-        with patch(
-            "subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd=["bw"], timeout=30),
-        ), pytest.raises(BackendError, match=r"timed out"):
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd=["bw"], timeout=30),
+            ),
+            pytest.raises(BackendError, match=r"timed out"),
+        ):
             backend.get("ANY")
 
 
@@ -175,9 +172,7 @@ class TestBitwardenBackendSecrecyHygiene:
         backend = BitwardenBackend(folder="myproject")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1, stdout="", stderr="Vault is locked."
-            )
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="Vault is locked.")
             try:
                 backend.get("ANY")
             except BackendError as exc:
@@ -222,9 +217,7 @@ class TestBitwardenBackendSecrecyHygiene:
         for call in mock_run.call_args_list:
             argv = call.args[0]
             for token in argv:
-                assert secret_value not in str(token), (
-                    f"credential value leaked into argv: {argv}"
-                )
+                assert secret_value not in str(token), f"credential value leaked into argv: {argv}"
 
 
 class TestBitwardenBackendUnlockCommand:
@@ -234,9 +227,7 @@ class TestBitwardenBackendUnlockCommand:
         from himitsubako.backends.bitwarden import BitwardenBackend
 
         monkeypatch.delenv("BW_SESSION", raising=False)
-        backend = BitwardenBackend(
-            folder="myproject", unlock_command="echo master_password"
-        )
+        backend = BitwardenBackend(folder="myproject", unlock_command="echo master_password")
 
         # First subprocess call: the unlock_command (returns master password)
         # Second: bw unlock --raw (returns session token)
@@ -250,9 +241,7 @@ class TestBitwardenBackendUnlockCommand:
                 return MagicMock(returncode=0, stdout="master_password\n", stderr="")
             if "unlock" in argv:
                 return MagicMock(returncode=0, stdout="session_token_xyz", stderr="")
-            return MagicMock(
-                returncode=0, stdout=json.dumps({"notes": "secret"}), stderr=""
-            )
+            return MagicMock(returncode=0, stdout=json.dumps({"notes": "secret"}), stderr="")
 
         with patch("subprocess.run", side_effect=fake_run):
             result = backend.get("MY_KEY")
@@ -265,18 +254,14 @@ class TestBitwardenBackendUnlockCommand:
         from himitsubako.backends.bitwarden import BitwardenBackend
 
         monkeypatch.setenv("BW_SESSION", "preset_session")
-        backend = BitwardenBackend(
-            folder="myproject", unlock_command="should_not_run"
-        )
+        backend = BitwardenBackend(folder="myproject", unlock_command="should_not_run")
 
         call_log: list[list[str]] = []
 
         def fake_run(*args, **kwargs):
             argv = args[0] if args else kwargs["args"]
             call_log.append(list(argv) if isinstance(argv, list) else [str(argv)])
-            return MagicMock(
-                returncode=0, stdout=json.dumps({"notes": "v"}), stderr=""
-            )
+            return MagicMock(returncode=0, stdout=json.dumps({"notes": "v"}), stderr="")
 
         with patch("subprocess.run", side_effect=fake_run):
             backend.get("ANY")

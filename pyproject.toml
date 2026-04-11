@@ -96,6 +96,8 @@ markers = [
     "unit: fast unit tests (default)",
     "integration: tests requiring external binaries (sops, age, bw, direnv)",
     "macos: tests requiring macOS Keychain",
+    "bitwarden: tests requiring an unlocked Bitwarden CLI session (HMB-S020)",
+    "direnv: tests requiring the direnv binary (HMB-S020)",
 ]
 
 [tool.ruff]

@@ -20,7 +20,9 @@ def _read_public_key(keys_path: Path) -> str:
 
 @click.command("rotate-key")
 @click.option(
-    "--new-key", required=True, type=click.Path(exists=False),
+    "--new-key",
+    required=True,
+    type=click.Path(exists=False),
     help="Path to the new age keys file.",
 )
 @click.option("--dry-run", is_flag=True, help="Show what would change without modifying files.")

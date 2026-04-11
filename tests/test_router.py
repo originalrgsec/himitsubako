@@ -115,9 +115,7 @@ class TestRouterResolution:
         sops = _StubBackend("sops")
         env = _StubBackend("env")
         keychain = _StubBackend("keychain")
-        router = _make_router(
-            cfg, {"sops": sops, "env": env, "keychain": keychain}
-        )
+        router = _make_router(cfg, {"sops": sops, "env": env, "keychain": keychain})
 
         assert router.resolve("AWS_SPECIAL") is keychain
         assert router.resolve("AWS_OTHER") is env
@@ -184,9 +182,7 @@ class TestRouterListKeys:
         sops = _StubBackend("sops", {"sops_only": "v"})
         env = _StubBackend("env", {"AWS_KEY": "v"})
         keychain = _StubBackend("keychain", {"DB_PASSWORD": "v"})
-        router = _make_router(
-            cfg, {"sops": sops, "env": env, "keychain": keychain}
-        )
+        router = _make_router(cfg, {"sops": sops, "env": env, "keychain": keychain})
 
         keys = sorted(router.list_keys())
         assert "sops_only" in keys

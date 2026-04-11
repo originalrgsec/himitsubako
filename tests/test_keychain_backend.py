@@ -34,8 +34,7 @@ class TestKeychainBackendImportError:
         backend = KeychainBackend(service="myapp")
         sim_failure = BackendError(
             "keychain",
-            "keychain backend requires 'keyring'; "
-            "install with 'pip install himitsubako[keychain]'",
+            "keychain backend requires 'keyring'; install with 'pip install himitsubako[keychain]'",
         )
         with (
             patch.object(backend, "_import_keyring", side_effect=sim_failure),

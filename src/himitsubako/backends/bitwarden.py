@@ -77,9 +77,7 @@ class BitwardenBackend:
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
-            raise BackendError(
-                "bitwarden", f"failed to parse bw output: {exc}"
-            ) from exc
+            raise BackendError("bitwarden", f"failed to parse bw output: {exc}") from exc
         # We store the credential value in the item's notes field.
         return data.get("notes")
 
@@ -116,9 +114,7 @@ class BitwardenBackend:
         try:
             items = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
-            raise BackendError(
-                "bitwarden", f"failed to parse bw output: {exc}"
-            ) from exc
+            raise BackendError("bitwarden", f"failed to parse bw output: {exc}") from exc
         return [item["name"] for item in items if "name" in item]
 
     # ---- Private helpers ----
@@ -172,15 +168,11 @@ class BitwardenBackend:
             ) from exc
 
         if password_proc.returncode != 0:
-            raise BackendError(
-                "bitwarden", "unlock_command exited non-zero (output suppressed)"
-            )
+            raise BackendError("bitwarden", "unlock_command exited non-zero (output suppressed)")
 
         master_password = password_proc.stdout.strip()
         if not master_password:
-            raise BackendError(
-                "bitwarden", "unlock_command produced no output"
-            )
+            raise BackendError("bitwarden", "unlock_command produced no output")
 
         unlock_result = self._run_bw(
             ["unlock", "--raw", "--passwordenv", "BW_PASSWORD"],
@@ -224,8 +216,7 @@ class BitwardenBackend:
         except FileNotFoundError as exc:
             raise BackendError(
                 "bitwarden",
-                f"bw binary not found at '{bw_bin}'. "
-                "Install: https://bitwarden.com/help/cli/",
+                f"bw binary not found at '{bw_bin}'. Install: https://bitwarden.com/help/cli/",
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise BackendError(
@@ -256,7 +247,5 @@ class BitwardenBackend:
                 "vault is locked; run 'bw unlock' and re-export BW_SESSION",
             )
         if "not authenticated" in lower or "not logged in" in lower:
-            raise BackendError(
-                "bitwarden", "not logged in; run 'bw login' first"
-            )
+            raise BackendError("bitwarden", "not logged in; run 'bw login' first")
         raise BackendError("bitwarden", f"bw failed: {text}")

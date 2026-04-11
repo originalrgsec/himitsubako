@@ -21,9 +21,7 @@ class TestHmbGet:
             write_sops_config(tmp_path)
             decrypted = yaml.dump({"MY_KEY": "my_secret_value"})
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=decrypted, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
                 result = runner.invoke(main, ["get", "MY_KEY"])
 
         assert result.exit_code == 0
@@ -37,9 +35,7 @@ class TestHmbGet:
             write_sops_config(tmp_path)
             decrypted = yaml.dump({"OTHER": "val"})
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=decrypted, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
                 result = runner.invoke(main, ["get", "NONEXISTENT"])
 
         assert result.exit_code != 0
@@ -65,13 +61,9 @@ class TestGetRevealGate:
             decrypted = yaml.dump({"MY_KEY": "my_secret_value"})
             with (
                 patch("subprocess.run") as mock_run,
-                patch.object(
-                    secrets_module, "_stdout_is_tty", return_value=is_tty
-                ),
+                patch.object(secrets_module, "_stdout_is_tty", return_value=is_tty),
             ):
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=decrypted, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
                 return runner.invoke(main, args)
 
     def test_pipe_without_reveal_prints_value(self, tmp_path):
@@ -80,9 +72,7 @@ class TestGetRevealGate:
         assert "my_secret_value" in result.output
 
     def test_pipe_with_reveal_prints_value(self, tmp_path):
-        result = self._run_get(
-            tmp_path, ["get", "MY_KEY", "--reveal"], is_tty=False
-        )
+        result = self._run_get(tmp_path, ["get", "MY_KEY", "--reveal"], is_tty=False)
         assert result.exit_code == 0
         assert "my_secret_value" in result.output
 
@@ -93,9 +83,7 @@ class TestGetRevealGate:
         assert "--reveal" in (result.output + (result.stderr or ""))
 
     def test_tty_with_reveal_prints_value(self, tmp_path):
-        result = self._run_get(
-            tmp_path, ["get", "MY_KEY", "--reveal"], is_tty=True
-        )
+        result = self._run_get(tmp_path, ["get", "MY_KEY", "--reveal"], is_tty=True)
         assert result.exit_code == 0
         assert "my_secret_value" in result.output
 
@@ -120,9 +108,7 @@ class TestHmbSet:
                     MagicMock(returncode=0, stdout=decrypted, stderr=""),
                     MagicMock(returncode=0, stdout="", stderr=""),
                 ]
-                result = runner.invoke(
-                    main, ["set", "NEW_KEY", "--value", "new_val"]
-                )
+                result = runner.invoke(main, ["set", "NEW_KEY", "--value", "new_val"])
 
         assert result.exit_code == 0
 
@@ -138,9 +124,7 @@ class TestHmbSet:
                     MagicMock(returncode=0, stdout=decrypted, stderr=""),
                     MagicMock(returncode=0, stdout="", stderr=""),
                 ]
-                result = runner.invoke(
-                    main, ["set", "NEW_KEY"], input="prompted_val\n"
-                )
+                result = runner.invoke(main, ["set", "NEW_KEY"], input="prompted_val\n")
 
         assert result.exit_code == 0
 
@@ -156,9 +140,7 @@ class TestHmbList:
             write_sops_config(tmp_path)
             decrypted = yaml.dump({"KEY_A": "a", "KEY_B": "b"})
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=decrypted, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
                 result = runner.invoke(main, ["list"])
 
         assert result.exit_code == 0
@@ -173,9 +155,7 @@ class TestHmbList:
             write_sops_config(tmp_path)
             decrypted = yaml.dump({})
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=decrypted, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
                 result = runner.invoke(main, ["list"])
 
         assert result.exit_code == 0
@@ -234,9 +214,7 @@ class TestEnvBackendDispatch:
         assert result.exit_code != 0
         assert "read-only" in (result.output + (result.stderr or ""))
 
-    def test_list_with_env_backend_and_prefix_strips(
-        self, tmp_path, monkeypatch
-    ):
+    def test_list_with_env_backend_and_prefix_strips(self, tmp_path, monkeypatch):
         import os
 
         from himitsubako.cli import main
@@ -395,9 +373,7 @@ class TestHmbDelete:
         stderr = result.stderr or result.output
         assert "read-only" in stderr
 
-    def test_routed_dispatch_prompt_names_resolved_backend(
-        self, tmp_path, monkeypatch
-    ):
+    def test_routed_dispatch_prompt_names_resolved_backend(self, tmp_path, monkeypatch):
         """BackendRouter: prompt must show the target backend_name, not 'router'."""
         from himitsubako.cli import main
 
@@ -418,9 +394,7 @@ class TestHmbDelete:
         assert "env" in result.output
         assert "deleted ROUTED_KEY" not in result.output
 
-    def test_routed_dispatch_force_hits_target_backend(
-        self, tmp_path, monkeypatch
-    ):
+    def test_routed_dispatch_force_hits_target_backend(self, tmp_path, monkeypatch):
         """With --force and an env-routed key, dispatch must raise backend error."""
         from himitsubako.cli import main
 
@@ -434,9 +408,7 @@ class TestHmbDelete:
                 "credentials": {"ROUTED_KEY": {"backend": "env"}},
             }
             (tmp_path / ".himitsubako.yaml").write_text(yaml.dump(config))
-            result = runner.invoke(
-                main, ["delete", "ROUTED_KEY", "--force"]
-            )
+            result = runner.invoke(main, ["delete", "ROUTED_KEY", "--force"])
 
         assert result.exit_code == 2
         assert "read-only" in (result.output + (result.stderr or ""))

@@ -1,5 +1,7 @@
 # himitsubako
 
+[![ci](https://github.com/originalrgsec/himitsubako/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/originalrgsec/himitsubako/actions/workflows/ci.yml)
+
 > 秘密箱 — "secret box." Named after Japanese puzzle boxes from the Hakone region, which open through a sequence of sliding moves rather than a single key.
 
 **A multi-backend credential abstraction for solo Python developers.** SOPS + age as the primary backend, with optional macOS Keychain, Bitwarden CLI, direnv, and environment variable support. MIT licensed.

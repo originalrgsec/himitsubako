@@ -106,9 +106,7 @@ def _maybe_refresh_envrc() -> None:
         envrc_path = config_path.parent / ".envrc"
         update_envrc(envrc_path, secrets_file=config.sops.secrets_file)
     except (BackendError, OSError) as exc:
-        click.echo(
-            f"warning: could not refresh .envrc: {exc}", err=True
-        )
+        click.echo(f"warning: could not refresh .envrc: {exc}", err=True)
 
 
 @click.command("direnv-export")
@@ -201,7 +199,7 @@ def list_secrets() -> None:
         raise click.ClickException(str(exc)) from exc
 
     # Peek through the router to detect an unprefixed env default and warn.
-    default = backend
+    default: SecretBackend | None = backend
     if isinstance(backend, BackendRouter):
         try:
             default = backend.resolve("__probe_for_default__")
@@ -224,8 +222,7 @@ def list_secrets() -> None:
             err=True,
         )
         click.echo(
-            "See your project's secrets registry (.himitsubako.yaml) "
-            "for the expected key names.",
+            "See your project's secrets registry (.himitsubako.yaml) for the expected key names.",
             err=True,
         )
         return

@@ -44,9 +44,7 @@ class TestUpdateEnvrc:
         from himitsubako.direnv import update_envrc
 
         envrc = tmp_path / ".envrc"
-        envrc.write_text(
-            "# my custom hook\nexport MY_VAR=hello\nuse flake\n"
-        )
+        envrc.write_text("# my custom hook\nexport MY_VAR=hello\nuse flake\n")
         update_envrc(envrc, secrets_file=".secrets.enc.yaml")
 
         content = envrc.read_text()
@@ -92,9 +90,7 @@ class TestUpdateEnvrc:
         from himitsubako.errors import BackendError
 
         envrc = tmp_path / ".envrc"
-        envrc.write_text(
-            f"{_START}\nbody1\n{_END}\nuser line\n{_START}\nbody2\n{_END}\n"
-        )
+        envrc.write_text(f"{_START}\nbody1\n{_END}\nuser line\n{_START}\nbody2\n{_END}\n")
         with pytest.raises(BackendError, match=r"resolve duplicates manually"):
             update_envrc(envrc, secrets_file=".secrets.enc.yaml")
 

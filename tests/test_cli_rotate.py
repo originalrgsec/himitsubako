@@ -28,27 +28,17 @@ class TestHmbRotateKey:
         runner = CliRunner()
         new_key_file = tmp_path / "new_keys.txt"
         new_key_file.write_text(
-            "# created: 2026-04-10\n"
-            "# public key: age1newpublickey456\n"
-            "AGE-SECRET-KEY-1NEWKEYDATA\n"
+            "# created: 2026-04-10\n# public key: age1newpublickey456\nAGE-SECRET-KEY-1NEWKEYDATA\n"
         )
 
         with runner.isolated_filesystem(temp_dir=tmp_path) as td:
             write_sops_config(Path(td))
-            (Path(td) / ".sops.yaml").write_text(
-                yaml.dump(SOPS_CREATION_RULES)
-            )
-            (Path(td) / ".secrets.enc.yaml").write_text(
-                "encrypted-content"
-            )
+            (Path(td) / ".sops.yaml").write_text(yaml.dump(SOPS_CREATION_RULES))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted-content")
 
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="", stderr=""
-                )
-                result = runner.invoke(
-                    main, ["rotate-key", "--new-key", str(new_key_file)]
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                result = runner.invoke(main, ["rotate-key", "--new-key", str(new_key_file)])
 
         assert result.exit_code == 0
 
@@ -58,9 +48,7 @@ class TestHmbRotateKey:
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
             write_sops_config(tmp_path)
-            result = runner.invoke(
-                main, ["rotate-key", "--new-key", "/nonexistent/key.txt"]
-            )
+            result = runner.invoke(main, ["rotate-key", "--new-key", "/nonexistent/key.txt"])
 
         assert result.exit_code != 0
 
@@ -70,19 +58,13 @@ class TestHmbRotateKey:
         runner = CliRunner()
         new_key_file = tmp_path / "new_keys.txt"
         new_key_file.write_text(
-            "# created: 2026-04-10\n"
-            "# public key: age1newpublickey456\n"
-            "AGE-SECRET-KEY-1NEWKEYDATA\n"
+            "# created: 2026-04-10\n# public key: age1newpublickey456\nAGE-SECRET-KEY-1NEWKEYDATA\n"
         )
 
         with runner.isolated_filesystem(temp_dir=tmp_path) as td:
             write_sops_config(Path(td))
-            (Path(td) / ".sops.yaml").write_text(
-                yaml.dump(SOPS_CREATION_RULES)
-            )
-            (Path(td) / ".secrets.enc.yaml").write_text(
-                "encrypted-content"
-            )
+            (Path(td) / ".sops.yaml").write_text(yaml.dump(SOPS_CREATION_RULES))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted-content")
 
             with patch("subprocess.run") as mock_run:
                 result = runner.invoke(

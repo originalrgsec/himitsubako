@@ -47,9 +47,7 @@ def _resolve_backend(cwd: Path | None = None) -> SecretBackend:
 
     # Final fallback: read-only env backend wrapped in a router so the rest of
     # the codebase always works against a uniform router interface.
-    return BackendRouter(
-        HimitsubakoConfig(default_backend="env"), project_dir=working_dir
-    )
+    return BackendRouter(HimitsubakoConfig(default_backend="env"), project_dir=working_dir)
 
 
 def get(key: str) -> str | None:

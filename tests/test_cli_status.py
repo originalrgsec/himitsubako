@@ -35,9 +35,7 @@ class TestStatusConfigFound:
             write_sops_config(tmp_path)
             _write_sops_yaml(tmp_path, recipient="age1exampleabc")
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="sops 3.8.1\n", stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="sops 3.8.1\n", stderr="")
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0, result.output
@@ -96,14 +94,10 @@ class TestStatusRouter:
                 },
             }
             # sort_keys=False to preserve declared order in YAML output.
-            (tmp_path / ".himitsubako.yaml").write_text(
-                yaml.dump(config, sort_keys=False)
-            )
+            (tmp_path / ".himitsubako.yaml").write_text(yaml.dump(config, sort_keys=False))
             _write_sops_yaml(tmp_path)
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="sops 3.8.1\n", stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="sops 3.8.1\n", stderr="")
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -126,9 +120,7 @@ class TestStatusJson:
             write_sops_config(tmp_path)
             _write_sops_yaml(tmp_path)
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="sops 3.8.1\n", stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="sops 3.8.1\n", stderr="")
                 result = runner.invoke(main, ["status", "--json"])
 
         assert result.exit_code == 0
@@ -185,13 +177,9 @@ class TestStatusSecretSafety:
             _write_sops_yaml(tmp_path)
             # Seed an encrypted secrets file with plaintext-looking content;
             # status must not decrypt anything.
-            (tmp_path / ".secrets.enc.yaml").write_text(
-                yaml.dump({"MY_SECRET": secret_value})
-            )
+            (tmp_path / ".secrets.enc.yaml").write_text(yaml.dump({"MY_SECRET": secret_value}))
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="sops 3.8.1\n", stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="sops 3.8.1\n", stderr="")
                 result = runner.invoke(main, ["status", "--json"])
                 result2 = runner.invoke(main, ["status"])
 
@@ -212,9 +200,7 @@ class TestStatusBackendChecks:
             write_sops_config(tmp_path)
             _write_sops_yaml(tmp_path)
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=1, stdout="", stderr="boom"
-                )
+                mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="boom")
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -292,9 +278,7 @@ class TestStatusBackendChecks:
                     }
                 )
             )
-            with patch.object(
-                KeychainBackend, "check_availability", return_value=None
-            ):
+            with patch.object(KeychainBackend, "check_availability", return_value=None):
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -352,9 +336,7 @@ class TestStatusBackendChecks:
                     }
                 )
             )
-            with patch(
-                "himitsubako.backends.keychain.KeychainBackend", _StubBackend
-            ):
+            with patch("himitsubako.backends.keychain.KeychainBackend", _StubBackend):
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -446,9 +428,7 @@ class TestStatusBackendChecks:
                 )
             )
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=2, stdout="", stderr="boom"
-                )
+                mock_run.return_value = MagicMock(returncode=2, stdout="", stderr="boom")
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -466,9 +446,7 @@ class TestStatusSopsRecipientsParse:
             write_sops_config(tmp_path)
             # No .sops.yaml at all.
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="sops 3.8.1\n", stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="sops 3.8.1\n", stderr="")
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -482,9 +460,7 @@ class TestStatusSopsRecipientsParse:
             write_sops_config(tmp_path)
             (tmp_path / ".sops.yaml").write_text("!!!!! not yaml ::::")
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="sops 3.8.1\n", stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout="sops 3.8.1\n", stderr="")
                 result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
@@ -499,9 +475,7 @@ class TestStatusMalformedConfig:
 
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            (tmp_path / ".himitsubako.yaml").write_text(
-                "default_backend: sops\n  bad: [unclosed\n"
-            )
+            (tmp_path / ".himitsubako.yaml").write_text("default_backend: sops\n  bad: [unclosed\n")
             result = runner.invoke(main, ["status"])
 
         assert result.exit_code != 0

@@ -82,8 +82,7 @@ class SopsBackend:
         except FileNotFoundError as exc:
             raise BackendError(
                 "sops",
-                f"sops binary not found at '{sops_bin}'. "
-                "Install: https://github.com/getsops/sops",
+                f"sops binary not found at '{sops_bin}'. Install: https://github.com/getsops/sops",
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise BackendError(
@@ -156,8 +155,7 @@ class SopsBackend:
             tmp_path.unlink(missing_ok=True)
             raise BackendError(
                 "sops",
-                f"sops binary not found at '{sops_bin}'. "
-                "Install: https://github.com/getsops/sops",
+                f"sops binary not found at '{sops_bin}'. Install: https://github.com/getsops/sops",
             ) from exc
         except subprocess.TimeoutExpired as exc:
             tmp_path.unlink(missing_ok=True)

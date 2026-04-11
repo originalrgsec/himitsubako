@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 0.3.0
 
+### CI / infrastructure
+
+- **HMB-S014 — GitHub Actions CI pipeline.** New `.github/workflows/ci.yml`
+  runs on push to `main` and every PR, matrix over Python 3.12 and 3.13.
+  Steps: ruff check, ruff format check, mypy, unit tests with `--cov-fail-under=80`,
+  and the HMB-S013 integration subset (sops + env, excluding `macos`,
+  `bitwarden`, and `direnv` markers for HMB-S020). Every `uses:` reference
+  is SHA-pinned per the supply-chain protection policy; `sops` v3.12.2 and
+  `age` v1.3.1 are installed from upstream GitHub releases with SHA256
+  verification against pinned env vars, not `apt-get install`. Top-level
+  `permissions: contents: read` enforces least privilege; a concurrency
+  group cancels stale runs on the same PR. Coverage XML is uploaded as an
+  artifact per Python version. No repository secrets consumed.
+- **Codebase-wide `ruff format` pass** so the format-check step stays
+  green (25 files reformatted). No behavior change.
+- **mypy strict pass.** One pre-existing type error in
+  `cli/secrets.py::list_secrets` (narrow-then-broaden assignment)
+  annotated as `SecretBackend | None`; mypy now clean over `src/`.
+
 ### Fixed
 
 - **HMB-S013 (discovered by new integration tests) — `SopsBackend._encrypt`

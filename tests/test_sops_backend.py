@@ -41,9 +41,7 @@ class TestSopsBackendGet:
         backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=decrypted, stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
             result = backend.get("MY_KEY")
 
         assert result == "secret_value"
@@ -55,9 +53,7 @@ class TestSopsBackendGet:
         backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=decrypted, stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
             result = backend.get("NONEXISTENT")
 
         assert result is None
@@ -157,9 +153,7 @@ class TestSopsBackendDelete:
         decrypted = yaml.dump({"OTHER": "val"})
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=decrypted, stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
             with pytest.raises(SecretNotFoundError):
                 backend.delete("NONEXISTENT")
 
@@ -174,9 +168,7 @@ class TestSopsBackendListKeys:
         backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=decrypted, stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
             keys = backend.list_keys()
 
         assert sorted(keys) == ["KEY_A", "KEY_B", "KEY_C"]
@@ -188,9 +180,7 @@ class TestSopsBackendListKeys:
         backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=decrypted, stderr=""
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=decrypted, stderr="")
             keys = backend.list_keys()
 
         assert keys == []
@@ -235,9 +225,7 @@ class TestSopsBackendBinResolution:
         fake_bin.write_text("#!/bin/sh\necho '{}'\n")
         fake_bin.chmod(0o755)
 
-        backend = SopsBackend(
-            secrets_file="/tmp/fake.enc.yaml", sops_bin=str(fake_bin)
-        )
+        backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml", sops_bin=str(fake_bin))
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="{}\n", stderr="")
@@ -257,9 +245,7 @@ class TestSopsBackendBinResolution:
         ctor_bin.chmod(0o755)
 
         monkeypatch.setenv("HIMITSUBAKO_SOPS_BIN", str(env_bin))
-        backend = SopsBackend(
-            secrets_file="/tmp/fake.enc.yaml", sops_bin=str(ctor_bin)
-        )
+        backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml", sops_bin=str(ctor_bin))
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="{}\n", stderr="")
@@ -273,9 +259,7 @@ class TestSopsBackendBinResolution:
         from himitsubako.errors import BackendError
 
         monkeypatch.delenv("HIMITSUBAKO_SOPS_BIN", raising=False)
-        backend = SopsBackend(
-            secrets_file="/tmp/fake.enc.yaml", sops_bin="/nonexistent/sops-bin"
-        )
+        backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml", sops_bin="/nonexistent/sops-bin")
 
         with pytest.raises(BackendError, match=r"/nonexistent/sops-bin"):
             backend.get("ANY")

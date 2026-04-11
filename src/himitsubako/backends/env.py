@@ -17,8 +17,7 @@ import os
 from himitsubako.errors import BackendError
 
 _READ_ONLY_MESSAGE = (
-    "env backend is read-only; "
-    "export the variable in your shell, .envrc, or container runtime"
+    "env backend is read-only; export the variable in your shell, .envrc, or container runtime"
 )
 
 
@@ -66,8 +65,4 @@ class EnvBackend:
         if not self._prefix:
             return list(os.environ.keys())
         plen = len(self._prefix)
-        return [
-            name[plen:]
-            for name in os.environ
-            if name.startswith(self._prefix)
-        ]
+        return [name[plen:] for name in os.environ if name.startswith(self._prefix)]

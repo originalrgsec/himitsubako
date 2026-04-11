@@ -23,9 +23,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def routed_vault(
-    tmp_vault: Path, monkeypatch: pytest.MonkeyPatch
-) -> Path:
+def routed_vault(tmp_vault: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Override `.himitsubako.yaml` to declare a `CI_*` env route alongside
     the SOPS default. `tmp_vault` already supplies a working .sops.yaml and
     encrypted secrets file."""
@@ -40,18 +38,14 @@ def routed_vault(
             "CI_*": {"backend": "env"},
         },
     }
-    (tmp_vault / ".himitsubako.yaml").write_text(
-        yaml.safe_dump(config, sort_keys=False)
-    )
+    (tmp_vault / ".himitsubako.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     # Seed a real env var the router should pick up for CI_ keys.
     monkeypatch.setenv("CI_TOKEN", "from-env-routed")
     return tmp_vault
 
 
 class TestRouterRealDispatch:
-    def test_sops_default_and_ci_env_route(
-        self, routed_vault: Path
-    ) -> None:
+    def test_sops_default_and_ci_env_route(self, routed_vault: Path) -> None:
         # Seed a SOPS-backed secret first so we can verify it hits SOPS.
         sops_backend = SopsBackend(secrets_file=".secrets.enc.yaml")
         sops_backend.set("APP_SECRET", "sops-value")
@@ -103,9 +97,7 @@ class TestRouterRealDispatch:
         assert "CI_TOKEN" in keys
         assert "CI_RUN_ID" in keys
 
-    def test_routed_delete_against_read_only_env_raises(
-        self, routed_vault: Path
-    ) -> None:
+    def test_routed_delete_against_read_only_env_raises(self, routed_vault: Path) -> None:
         from himitsubako.errors import BackendError
 
         config_path = find_config(routed_vault)

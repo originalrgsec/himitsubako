@@ -65,10 +65,7 @@ def age_keypair(tmp_path: Path, real_sops: None) -> tuple[str, Path]:
                 public_key = line.split(":", 1)[1].strip()
                 break
     if not public_key:
-        pytest.fail(
-            "age-keygen did not surface a public key via stderr or "
-            "the keys file comment"
-        )
+        pytest.fail("age-keygen did not surface a public key via stderr or the keys file comment")
 
     keys_file.chmod(0o600)
     return public_key, keys_file
@@ -145,9 +142,7 @@ def tmp_vault(
         check=False,
     )
     if encrypt.returncode != 0:
-        pytest.fail(
-            f"sops --encrypt bootstrap failed: {encrypt.stderr or encrypt.stdout}"
-        )
+        pytest.fail(f"sops --encrypt bootstrap failed: {encrypt.stderr or encrypt.stdout}")
 
     return vault
 
@@ -181,8 +176,7 @@ def second_age_keypair(tmp_path: Path, real_sops: None) -> tuple[str, Path]:
                 break
     if not public_key:
         pytest.fail(
-            "second age-keygen did not surface a public key via stderr or "
-            "the keys file comment"
+            "second age-keygen did not surface a public key via stderr or the keys file comment"
         )
     keys_file.chmod(0o600)
     return public_key, keys_file

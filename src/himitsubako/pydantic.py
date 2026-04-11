@@ -78,9 +78,7 @@ class HimitsubakoSettingsSource(PydanticBaseSettingsSource):
         self._backend = _resolve_backend()
         return self._backend
 
-    def get_field_value(
-        self, field: Any, field_name: str
-    ) -> tuple[Any, str, bool]:
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         """Look up a single field value. Matches PydanticBaseSettingsSource v2 contract.
 
         pydantic-settings v2.13 declares ``get_field_value(self, field: FieldInfo,

@@ -27,9 +27,7 @@ pytestmark = pytest.mark.integration
 
 def _write_env_config(project_dir: Path, prefix: str) -> None:
     (project_dir / ".himitsubako.yaml").write_text(
-        yaml.safe_dump(
-            {"default_backend": "env", "env": {"prefix": prefix}}
-        )
+        yaml.safe_dump({"default_backend": "env", "env": {"prefix": prefix}})
     )
 
 

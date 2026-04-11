@@ -132,9 +132,7 @@ def init(force: bool) -> None:
 
     _write_if_absent(project_dir / ".sops.yaml", _build_sops_yaml(public_key), force=force)
     _write_if_absent(project_dir / ".envrc", _build_envrc(secrets_file), force=force)
-    _write_if_absent(
-        project_dir / ".himitsubako.yaml", _build_config_yaml(), force=force
-    )
+    _write_if_absent(project_dir / ".himitsubako.yaml", _build_config_yaml(), force=force)
 
     # Create empty encrypted secrets file
     secrets_path = project_dir / secrets_file

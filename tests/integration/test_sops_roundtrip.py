@@ -29,9 +29,7 @@ pytestmark = pytest.mark.integration
 def _assert_mode_0600(path: Path) -> None:
     """Enforce the T-010 regression: secrets file must be mode 0600."""
     mode = stat.S_IMODE(path.stat().st_mode)
-    assert mode == 0o600, (
-        f"{path.name} mode is {oct(mode)}; T-010 requires 0o600"
-    )
+    assert mode == 0o600, f"{path.name} mode is {oct(mode)}; T-010 requires 0o600"
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +53,7 @@ class TestSopsRoundTrip:
             ),
             (
                 "DOLLAR_AND_BACKTICK",
-                "literal $var and `backtick` and \"quotes\"",
+                'literal $var and `backtick` and "quotes"',
             ),
             (
                 "LONG_RANDOMISH",
@@ -67,9 +65,7 @@ class TestSopsRoundTrip:
             ),
         ],
     )
-    def test_varied_charsets_round_trip(
-        self, tmp_vault: Path, key: str, value: str
-    ) -> None:
+    def test_varied_charsets_round_trip(self, tmp_vault: Path, key: str, value: str) -> None:
         backend = SopsBackend(secrets_file=".secrets.enc.yaml")
         backend.set(key, value)
         assert backend.get(key) == value
@@ -153,26 +149,18 @@ class TestSopsRotateKey:
         # Rotate: give sops access to BOTH keys so updatekeys can decrypt
         # the current file (with old_keys) and re-encrypt it to new_public.
         combined = tmp_vault / "combined-keys.txt"
-        combined.write_text(
-            old_keys_file.read_text() + "\n" + new_keys_file.read_text()
-        )
+        combined.write_text(old_keys_file.read_text() + "\n" + new_keys_file.read_text())
         combined.chmod(0o600)
         monkeypatch.setenv("SOPS_AGE_KEY_FILE", str(combined))
 
         runner = CliRunner()
-        result = runner.invoke(
-            main, ["rotate-key", "--new-key", str(new_keys_file)]
-        )
+        result = runner.invoke(main, ["rotate-key", "--new-key", str(new_keys_file)])
         assert result.exit_code == 0, result.output
         assert "Key rotation complete." in result.output
 
         # .sops.yaml now names the new recipient.
         sops_yaml = yaml.safe_load((tmp_vault / ".sops.yaml").read_text())
-        recipients = [
-            rule["age"]
-            for rule in sops_yaml["creation_rules"]
-            if "age" in rule
-        ]
+        recipients = [rule["age"] for rule in sops_yaml["creation_rules"] if "age" in rule]
         assert new_public in recipients
         assert old_public not in recipients
 

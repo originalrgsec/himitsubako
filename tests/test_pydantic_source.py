@@ -67,9 +67,7 @@ class TestHimitsubakoSettingsSourceLookup:
         class Settings(BaseSettings):
             DB_PASSWORD: str = ""
 
-        source = HimitsubakoSettingsSource(
-            Settings, backend=backend, prefix="MYAPP_"
-        )
+        source = HimitsubakoSettingsSource(Settings, backend=backend, prefix="MYAPP_")
         values = source()
         assert values.get("DB_PASSWORD") == "with_prefix"
 
@@ -82,12 +80,8 @@ class TestHimitsubakoSettingsSourceImportError:
         from himitsubako import pydantic as pyd_module
 
         # Force the import to fail by removing the module and re-importing
-        monkeypatch.setattr(
-            pyd_module, "_PYDANTIC_SETTINGS_AVAILABLE", False
-        )
-        monkeypatch.setattr(
-            pyd_module, "_PYDANTIC_SETTINGS_IMPORT_ERROR", ImportError("nope")
-        )
+        monkeypatch.setattr(pyd_module, "_PYDANTIC_SETTINGS_AVAILABLE", False)
+        monkeypatch.setattr(pyd_module, "_PYDANTIC_SETTINGS_IMPORT_ERROR", ImportError("nope"))
 
         from himitsubako.errors import BackendError
         from himitsubako.pydantic import HimitsubakoSettingsSource

@@ -106,9 +106,7 @@ class TestEnsureAgeKey:
 
         keys_file = tmp_path / "keys.txt"
         keys_file.write_text(
-            "# created: 2026-04-10\n"
-            "# public key: age1abc123def456\n"
-            "AGE-SECRET-KEY-1FAKEKEYDATA\n"
+            "# created: 2026-04-10\n# public key: age1abc123def456\nAGE-SECRET-KEY-1FAKEKEYDATA\n"
         )
         result = _ensure_age_key(keys_file)
         assert result == "age1abc123def456"

@@ -1,0 +1,130 @@
+# HMB-S014: Continuous integration pipeline.
+#
+# Supply-chain notes
+# ------------------
+# - Every `uses:` reference is pinned to a commit SHA, not a tag
+#   (Obsidian/code/supply-chain-protection.md). Tag pointers below
+#   the SHA are documentation only and are the version at the time of
+#   pinning; the SHA is what GitHub resolves and the version can drift.
+# - `sops` and `age` are installed from upstream GitHub releases and
+#   verified by SHA256, not `apt-get install`. The apt version in
+#   Ubuntu LTS lags the upstream release train by multiple versions
+#   and would not carry the v3.8+ `--filename-override` flag that
+#   `SopsBackend._encrypt` depends on (see HMB-S013).
+#
+# Action pins (tag at pinning time → commit SHA)
+#   actions/checkout            v4.3.0   08eba0b27e820071cde6df949e0beb9ba4906955
+#   astral-sh/setup-uv          v5.4.1   0c5e2b8115b80b4c7c5ddf6ffdd634974642d182
+#   actions/upload-artifact     v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02
+#
+# Binary pins (version → linux amd64 SHA256)
+#   sops v3.12.2   14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
+#   age  v1.3.1    bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+#
+# To bump a pin, edit both the SHA (line that GitHub actually reads)
+# and the comment (human-readable version), re-resolve via
+# `git ls-remote` / release checksums, and commit in a dedicated PR.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOPS_VERSION: v3.12.2
+  SOPS_LINUX_AMD64_SHA256: 14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
+  AGE_VERSION: v1.3.1
+  AGE_LINUX_AMD64_SHA256: bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ffdd634974642d182  # v5.4.1
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install sops (pinned + SHA256 verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          curl -fsSL -o sops-bin "$url"
+          echo "${SOPS_LINUX_AMD64_SHA256}  sops-bin" | sha256sum -c -
+          install -m 0755 sops-bin "$HOME/.local/bin/sops"
+          rm -f sops-bin
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/sops" --version
+
+      - name: Install age (pinned + SHA256 verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-linux-amd64.tar.gz"
+          curl -fsSL -o age.tar.gz "$url"
+          echo "${AGE_LINUX_AMD64_SHA256}  age.tar.gz" | sha256sum -c -
+          tar -xzf age.tar.gz
+          install -m 0755 age/age "$HOME/.local/bin/age"
+          install -m 0755 age/age-keygen "$HOME/.local/bin/age-keygen"
+          rm -rf age age.tar.gz
+          "$HOME/.local/bin/age" --version
+          "$HOME/.local/bin/age-keygen" --help >/dev/null 2>&1 || true
+
+      - name: Install project (all extras + dev)
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check src tests
+
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+
+      - name: mypy
+        run: uv run mypy src
+
+      - name: Unit tests + coverage gate
+        run: >-
+          uv run pytest
+          --override-ini="addopts=-v --tb=short"
+          -m "not integration"
+          --cov=src/himitsubako
+          --cov-report=xml
+          --cov-report=term-missing
+          --cov-fail-under=80
+
+      - name: Integration tests (S013 subset — sops + env)
+        run: >-
+          uv run pytest tests/integration/
+          --override-ini="addopts=-v --tb=short"
+          -m "integration and not macos and not bitwarden and not direnv"
+
+      - name: Upload coverage XML
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: coverage-xml-py${{ matrix.python-version }}
+          path: coverage.xml
+          if-no-files-found: warn
+          retention-days: 14

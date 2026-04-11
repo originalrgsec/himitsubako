@@ -61,14 +61,10 @@ class TestCliFullFlow:
         assert (project / ".sops.yaml").exists()
         assert (project / ".secrets.enc.yaml").exists()
 
-        set_result = runner.invoke(
-            main, ["set", "API_TOKEN", "--value", "tok-abc-123"]
-        )
+        set_result = runner.invoke(main, ["set", "API_TOKEN", "--value", "tok-abc-123"])
         assert set_result.exit_code == 0, set_result.output
 
-        set2_result = runner.invoke(
-            main, ["set", "DB_PASS", "--value", "p@ss w/ spaces"]
-        )
+        set2_result = runner.invoke(main, ["set", "DB_PASS", "--value", "p@ss w/ spaces"])
         assert set2_result.exit_code == 0, set2_result.output
 
         # Pipe reads (is_tty = False under CliRunner) so --reveal is not
@@ -82,9 +78,7 @@ class TestCliFullFlow:
         assert "API_TOKEN" in list_result.output
         assert "DB_PASS" in list_result.output
 
-        delete_result = runner.invoke(
-            main, ["delete", "API_TOKEN", "--force"]
-        )
+        delete_result = runner.invoke(main, ["delete", "API_TOKEN", "--force"])
         assert delete_result.exit_code == 0, delete_result.output
         assert "deleted API_TOKEN" in delete_result.output
 
@@ -96,9 +90,7 @@ class TestCliFullFlow:
         gone_result = runner.invoke(main, ["get", "API_TOKEN"])
         assert gone_result.exit_code != 0
 
-    def test_status_against_real_config(
-        self, tmp_vault: Path
-    ) -> None:
+    def test_status_against_real_config(self, tmp_vault: Path) -> None:
         runner = CliRunner()
         result = runner.invoke(main, ["status"])
         assert result.exit_code == 0, result.output
@@ -106,9 +98,7 @@ class TestCliFullFlow:
         assert "Default backend: sops" in result.output
         assert "sops: ok" in result.output
 
-    def test_status_json_against_real_config(
-        self, tmp_vault: Path
-    ) -> None:
+    def test_status_json_against_real_config(self, tmp_vault: Path) -> None:
         runner = CliRunner()
         result = runner.invoke(main, ["status", "--json"])
         assert result.exit_code == 0, result.output
