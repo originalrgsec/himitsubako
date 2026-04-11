@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 0.3.0
 
+### Docs
+
+- **HMB-S015 — mkdocs-material documentation site.** New `docs/` tree
+  plus top-level `mkdocs.yml` configuring the `material` theme with a
+  light/dark palette toggle and tabbed navigation. Pages: landing,
+  getting-started walkthrough, full CLI reference, configuration and
+  `BackendRouter` guide, one backend page each for SOPS / env /
+  keychain / bitwarden-cli, integration pages for pydantic-settings
+  and direnv, a user-facing security summary, a "why not ..." section,
+  and a changelog page that renders `CHANGELOG.md` via the snippets
+  extension. `uv run mkdocs build --strict` is green in 0.3 s. Deploy
+  target intentionally deferred — the build is the success criterion;
+  GitHub Pages / Read the Docs / Cloudflare Pages selection is a
+  follow-up decision.
+
 ### CI / infrastructure
 
 - **HMB-S014 — GitHub Actions CI pipeline.** New `.github/workflows/ci.yml`
