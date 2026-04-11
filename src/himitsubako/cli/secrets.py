@@ -23,14 +23,29 @@ def _resolve_backend() -> SopsBackend:
     project_dir = config_path.parent
 
     if config.default_backend == "sops":
-        return SopsBackend(secrets_file=str(project_dir / config.sops.secrets_file))
+        return SopsBackend(
+            secrets_file=str(project_dir / config.sops.secrets_file),
+            sops_bin=config.sops.bin,
+        )
 
     raise click.ClickException(f"backend '{config.default_backend}' not yet implemented")
 
 
+def _stdout_is_tty() -> bool:
+    """Indirection for testability — patched in tests to simulate TTY/pipe."""
+    return sys.stdout.isatty()
+
+
 @click.command("get")
 @click.argument("key")
-def get_secret(key: str) -> None:
+@click.option(
+    "--reveal",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="Print the secret to a terminal. Required when stdout is a TTY.",
+)
+def get_secret(key: str, reveal: bool) -> None:
     """Get a secret value by key."""
     try:
         backend = _resolve_backend()
@@ -40,6 +55,14 @@ def get_secret(key: str) -> None:
 
     if value is None:
         click.echo(f"Secret '{key}' not found.", err=True)
+        sys.exit(1)
+
+    if _stdout_is_tty() and not reveal:
+        click.echo(
+            f"refusing to print secret '{key}' to a terminal without --reveal "
+            f"(use 'hmb get {key} --reveal' or pipe to a consumer)",
+            err=True,
+        )
         sys.exit(1)
 
     click.echo(value)

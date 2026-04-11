@@ -21,6 +21,7 @@ class SopsConfig(BaseModel):
 
     secrets_file: str = ".secrets.enc.yaml"
     age_identity: str = "~/.config/sops/age/keys.txt"
+    bin: str | None = None
 
 
 class KeychainConfig(BaseModel):

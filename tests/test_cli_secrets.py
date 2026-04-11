@@ -52,6 +52,59 @@ class TestHmbGet:
         assert result.exit_code == 2
 
 
+class TestGetRevealGate:
+    """AC-4: hmb get --reveal TTY gate (T-018, ADR OQ-4)."""
+
+    def _run_get(self, tmp_path, args, *, is_tty: bool):
+        from himitsubako.cli import main
+        from himitsubako.cli import secrets as secrets_module
+
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            write_sops_config(tmp_path)
+            decrypted = yaml.dump({"MY_KEY": "my_secret_value"})
+            with (
+                patch("subprocess.run") as mock_run,
+                patch.object(
+                    secrets_module, "_stdout_is_tty", return_value=is_tty
+                ),
+            ):
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=decrypted, stderr=""
+                )
+                return runner.invoke(main, args)
+
+    def test_pipe_without_reveal_prints_value(self, tmp_path):
+        result = self._run_get(tmp_path, ["get", "MY_KEY"], is_tty=False)
+        assert result.exit_code == 0
+        assert "my_secret_value" in result.output
+
+    def test_pipe_with_reveal_prints_value(self, tmp_path):
+        result = self._run_get(
+            tmp_path, ["get", "MY_KEY", "--reveal"], is_tty=False
+        )
+        assert result.exit_code == 0
+        assert "my_secret_value" in result.output
+
+    def test_tty_without_reveal_blocks_and_errors(self, tmp_path):
+        result = self._run_get(tmp_path, ["get", "MY_KEY"], is_tty=True)
+        assert result.exit_code != 0
+        assert "my_secret_value" not in result.output
+        assert "--reveal" in (result.output + (result.stderr or ""))
+
+    def test_tty_with_reveal_prints_value(self, tmp_path):
+        result = self._run_get(
+            tmp_path, ["get", "MY_KEY", "--reveal"], is_tty=True
+        )
+        assert result.exit_code == 0
+        assert "my_secret_value" in result.output
+
+    def test_short_flag_r_works(self, tmp_path):
+        result = self._run_get(tmp_path, ["get", "MY_KEY", "-r"], is_tty=True)
+        assert result.exit_code == 0
+        assert "my_secret_value" in result.output
+
+
 class TestHmbSet:
     """Test the hmb set command."""
 

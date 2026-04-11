@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-11
+
+Hardening release. Closes the four known limitations flagged at v0.1.0 ship time
+(threat-model items T-001, T-004, T-010, T-018; ADR open question OQ-4).
+No new public surface beyond the additions listed below; v0.2.0 alternate
+backends still land in the next sprint.
+
+### Added
+
+- `SopsBackend(secrets_file, sops_bin=None)` — new optional `sops_bin` argument
+  pins the `sops` binary path instead of relying on PATH lookup.
+- `HIMITSUBAKO_SOPS_BIN` environment variable — when set and non-empty, takes
+  precedence over both the constructor argument and the config field.
+- `sops.bin` field in `.himitsubako.yaml` — optional path to a non-PATH `sops`
+  binary, plumbed through both the CLI (`hmb get/set/list/rotate-key`) and the
+  Python API. Defaults to `None`, preserving v0.1.0 behavior.
+- `hmb get KEY --reveal` (`-r`) — boolean flag that authorizes printing the
+  decrypted value to a TTY. When stdout is a pipe or redirect, the flag is
+  optional and the value is printed as before, so `$(hmb get KEY)` and
+  `hmb get KEY | pbcopy` continue to work unchanged.
+
+### Changed
+
+- All `subprocess.run` calls in `SopsBackend` now pass `timeout=30s` (hardcoded
+  module constant `_SOPS_TIMEOUT_SECONDS`). Timeouts are caught and re-raised
+  as `BackendError("sops", "sops <decrypt|encrypt> timed out after 30s")`.
+- `SopsBackend._encrypt` writes the temp plaintext file with mode `0o600` from
+  creation (via `os.fchmod`), and re-asserts `0o600` on the destination file
+  after the atomic rename. The destination mode is now independent of the
+  caller's umask.
+- `hmb get KEY` running against a TTY without `--reveal` exits 1 with a stderr
+  message pointing at the flag. This is a deliberate behavior change from
+  v0.1.0; scripts that piped output are unaffected.
+
+### Security
+
+- **T-001 mitigated.** A malicious `sops` binary earlier in PATH can no longer
+  silently shadow the intended one; operators can pin an absolute path via
+  env var or config.
+- **T-004 mitigated.** A hung or hostile `sops` subprocess can no longer block
+  himitsubako indefinitely; the 30-second timeout caps the worst case.
+- **T-010 mitigated.** `.secrets.enc.yaml` is now mode `0600` regardless of
+  umask, narrowing the local-disclosure window on multi-user systems.
+- **T-018 mitigated.** `hmb get` no longer prints plaintext to a terminal by
+  default. Shoulder-surfing and terminal scrollback exposure now require an
+  explicit `--reveal` opt-in per invocation.
+- ADR open question **OQ-4 closed**: TTY-aware reveal gate selected over
+  config-driven defaults to keep script ergonomics intact while protecting
+  interactive sessions.
+
+[0.1.1]: https://github.com/originalrgsec/himitsubako/commits/v0.1.1
+
 ## [0.1.0] - 2026-04-11
 
 First rescoped release: the SOPS track ships standalone.

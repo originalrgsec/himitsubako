@@ -51,6 +51,13 @@ class TestHimitsubakoConfig:
 
         config = HimitsubakoConfig()
         assert config.sops.secrets_file == ".secrets.enc.yaml"
+        assert config.sops.bin is None
+
+    def test_config_sops_bin_override(self):
+        from himitsubako.config import HimitsubakoConfig
+
+        config = HimitsubakoConfig(**{"sops": {"bin": "/opt/homebrew/bin/sops"}})
+        assert config.sops.bin == "/opt/homebrew/bin/sops"
 
     def test_config_is_immutable(self):
         from himitsubako.config import HimitsubakoConfig

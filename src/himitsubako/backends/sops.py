@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -9,6 +11,10 @@ from pathlib import Path
 import yaml
 
 from himitsubako.errors import BackendError, SecretNotFoundError
+
+_SOPS_TIMEOUT_SECONDS = 30
+_SECRETS_FILE_MODE = 0o600
+_ENV_SOPS_BIN = "HIMITSUBAKO_SOPS_BIN"
 
 
 class SopsBackend:
@@ -18,8 +24,18 @@ class SopsBackend:
     Only values are encrypted; keys remain plaintext for readable git diffs.
     """
 
-    def __init__(self, secrets_file: str) -> None:
+    def __init__(self, secrets_file: str, sops_bin: str | None = None) -> None:
         self._secrets_file = secrets_file
+        self._sops_bin_arg = sops_bin
+
+    def _resolve_sops_bin(self) -> str:
+        """Resolve the sops binary path: env var > constructor arg > 'sops' on PATH."""
+        env_value = os.environ.get(_ENV_SOPS_BIN, "").strip()
+        if env_value:
+            return env_value
+        if self._sops_bin_arg:
+            return self._sops_bin_arg
+        return "sops"
 
     @property
     def backend_name(self) -> str:
@@ -54,16 +70,25 @@ class SopsBackend:
 
     def _decrypt(self) -> dict[str, str]:
         """Decrypt the secrets file and return its contents as a dict."""
+        sops_bin = self._resolve_sops_bin()
         try:
             result = subprocess.run(
-                ["sops", "--decrypt", self._secrets_file],
+                [sops_bin, "--decrypt", self._secrets_file],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=_SOPS_TIMEOUT_SECONDS,
             )
         except FileNotFoundError as exc:
             raise BackendError(
-                "sops", "sops binary not found on PATH. Install: https://github.com/getsops/sops"
+                "sops",
+                f"sops binary not found at '{sops_bin}'. "
+                "Install: https://github.com/getsops/sops",
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise BackendError(
+                "sops",
+                f"sops decrypt timed out after {_SOPS_TIMEOUT_SECONDS}s",
             ) from exc
 
         if result.returncode != 0:
@@ -84,33 +109,59 @@ class SopsBackend:
         secrets_path = Path(self._secrets_file)
         parent = secrets_path.parent
         parent.mkdir(parents=True, exist_ok=True)
+        sops_bin = self._resolve_sops_bin()
 
-        # Write plaintext to a temp file in the same directory (for atomic rename)
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".yaml",
-            dir=str(parent),
-            delete=False,
-        ) as tmp:
-            yaml.dump(data, tmp, default_flow_style=False)
-            tmp_path = Path(tmp.name)
+        # Create temp file with 0600 mode from the start so plaintext is never
+        # readable by other users on the system, even briefly.
+        fd, tmp_name = tempfile.mkstemp(suffix=".yaml", dir=str(parent))
+        tmp_path = Path(tmp_name)
+        try:
+            os.fchmod(fd, _SECRETS_FILE_MODE)
+            try:
+                tmp_file = os.fdopen(fd, "w")
+            except Exception:
+                # fdopen failed: close the bare fd ourselves before unlinking,
+                # otherwise it leaks for the lifetime of the process.
+                os.close(fd)
+                raise
+            with tmp_file:
+                yaml.dump(data, tmp_file, default_flow_style=False)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         try:
             result = subprocess.run(
-                ["sops", "--encrypt", "--in-place", str(tmp_path)],
+                [sops_bin, "--encrypt", "--in-place", str(tmp_path)],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=_SOPS_TIMEOUT_SECONDS,
             )
         except FileNotFoundError as exc:
             tmp_path.unlink(missing_ok=True)
             raise BackendError(
-                "sops", "sops binary not found on PATH. Install: https://github.com/getsops/sops"
+                "sops",
+                f"sops binary not found at '{sops_bin}'. "
+                "Install: https://github.com/getsops/sops",
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            tmp_path.unlink(missing_ok=True)
+            raise BackendError(
+                "sops",
+                f"sops encrypt timed out after {_SOPS_TIMEOUT_SECONDS}s",
             ) from exc
 
         if result.returncode != 0:
             tmp_path.unlink(missing_ok=True)
             raise BackendError("sops", f"failed to encrypt: {result.stderr}")
 
-        # Atomic replace
+        # Atomic replace, then re-assert 0600 in case sops or the OS reset it.
+        # There is a brief window between rename() and chmod() where the file
+        # may carry sops's chosen permissions. This is unavoidable in POSIX
+        # without renameat2(RENAME_EXCHANGE), which Python's stdlib does not
+        # expose. The window is nanoseconds and the file content is ciphertext.
         tmp_path.replace(secrets_path)
+        # No-op on platforms where chmod is unsupported (e.g., Windows).
+        with contextlib.suppress(OSError):
+            os.chmod(secrets_path, _SECRETS_FILE_MODE)

@@ -63,7 +63,10 @@ def _resolve_backend(cwd: Path | None = None) -> SecretBackend:
         project_dir = config_path.parent
 
         if config.default_backend == "sops":
-            return SopsBackend(secrets_file=str(project_dir / config.sops.secrets_file))
+            return SopsBackend(
+                secrets_file=str(project_dir / config.sops.secrets_file),
+                sops_bin=config.sops.bin,
+            )
 
     # Check for .sops.yaml without .himitsubako.yaml
     sops_yaml = working_dir / ".sops.yaml"
