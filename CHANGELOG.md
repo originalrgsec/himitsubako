@@ -5,33 +5,134 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - Sprint 2 (v0.2.0)
+## [0.2.0] - 2026-04-11
 
-### Added
+Sprint 2 ships the alternate-backend track and the per-credential
+routing dispatcher that ties them together. v0.2.0 turns himitsubako
+from "a SOPS wrapper" into "a multi-backend credential abstraction"
+without breaking any v0.1.x configuration.
 
-- **HMB-S007: First-class environment variable backend.** New
-  `EnvBackend(prefix: str = "")` class in `himitsubako.backends.env`
-  implements the `SecretBackend` protocol. Read-only by design:
-  `set` and `delete` raise `BackendError("env", "...")` because env
-  vars are set externally (shell, `.envrc`, container runtime). With
-  a configured prefix (`env.prefix: MYAPP_` in `.himitsubako.yaml`),
-  `get("DB_PASSWORD")` resolves `MYAPP_DB_PASSWORD` and `list_keys()`
-  returns matching variables with the prefix stripped. Wired through
-  both the CLI (`hmb get/set/list` dispatch when `default_backend: env`)
-  and the Python API (`himitsubako.get/set_secret/list_secrets`).
-- `hmb list` against an env backend with no prefix now emits a stderr
-  warning explaining that the full process environment is being listed
-  and pointing at `env.prefix` as the scoping mechanism. The warning
-  prevents users from accidentally believing `HOME`, `PATH`, and
-  inherited credentials are application secrets.
+### Added — backends
 
-### Removed
+- **HMB-S007 — first-class environment variable backend.** `EnvBackend(prefix: str = "")`
+  in `himitsubako.backends.env`. Read-only by design (`set`/`delete`
+  raise `BackendError`). With a configured prefix, `get("DB_PASSWORD")`
+  resolves `MYAPP_DB_PASSWORD` and `list_keys()` returns matching
+  variables with the prefix stripped. The internal `_EnvFallbackBackend`
+  shim is removed; no-config fallback now returns the real `EnvBackend()`.
+  `hmb list` against an unprefixed env backend emits a stderr warning
+  so users do not mistake inherited shell credentials for app secrets.
 
-- The internal `_EnvFallbackBackend` shim in `himitsubako.api` is gone.
-  The no-config fallback now returns the real `EnvBackend()`. Callers
-  that previously caught `RuntimeError` from `set_secret()` in the
-  no-config path must catch `BackendError` (or `HimitsubakoError`)
-  instead. No external imports of the shim existed.
+- **HMB-S008 — macOS Keychain backend.** `KeychainBackend(service: str)`
+  in `himitsubako.backends.keychain`. Wraps the `keyring` library
+  (optional `[keychain]` extra). `list_keys()` raises `BackendError`
+  unconditionally because the keyring API does not expose enumeration —
+  the CLI catches this and prints a friendly "this backend does not
+  support listing" message. Insecure-backend deny-list at first call:
+  the resolved `keyring.get_keyring()` is rejected if its **MRO** matches
+  `Null`, `PlaintextKeyring`, `EncryptedKeyring`, or `fail.Keyring`,
+  preventing both direct and subclass-based bypass on misconfigured
+  Linux hosts.
+
+- **HMB-S009 — Bitwarden CLI subprocess backend.** `BitwardenBackend(folder, bin, unlock_command)`
+  in `himitsubako.backends.bitwarden`. Invokes the `bw` system binary;
+  no `bitwarden-sdk` Python dependency (the SDK is non-OSI; see the
+  COR-S037 retrospective). Three modes:
+  - **Strict (default):** `BW_SESSION` must be set; the library never
+    prompts. Missing/empty session raises a clear `BackendError`.
+  - **Pinned bin:** `bin=` constructor arg or `HIMITSUBAKO_BW_BIN` env
+    var pins an absolute path, mitigating T-005 (PATH hijack of `bw`).
+  - **Shell-out unlock:** `unlock_command` runs a configured command,
+    captures stdout as the master password, pipes it to `bw unlock --raw`
+    via `BW_PASSWORD` env var (NOT argv) to obtain a session token used
+    in-memory only. Token is never written to disk or logged.
+  Hardened secrecy: `BW_SESSION` is never logged or interpolated into
+  errors; the `_raise_friendly` helper redacts any base64 token-like
+  string from `bw` stderr before re-raising. All subprocess calls use
+  a 30s timeout matching SOPS.
+
+### Added — dispatcher
+
+- **HMB-S012 — `BackendRouter` per-credential routing.** New
+  `himitsubako.router.BackendRouter` implements `SecretBackend` and
+  dispatches each key to the configured backend. Resolution order:
+  exact match in `config.credentials` → first matching glob (declaration
+  order, `fnmatch.fnmatchcase`) → `default_backend`. `list_keys()`
+  aggregates across all backends in use; backends that raise on
+  `list_keys` (keychain) are caught, logged to stderr as a partial-
+  failure warning, and skipped. Backend instances are cached on first
+  construction. Both `cli/secrets.py` and `api.py` were refactored to
+  return a router rather than a single backend, so all CLI commands and
+  Python API calls transparently support per-credential routing.
+
+  **Backward compatibility:** configs with no `credentials:` section
+  behave identically to v0.1.x. All v0.1.x tests pass unchanged.
+
+### Added — integrations
+
+- **HMB-S010 — direnv helper.** New `himitsubako.direnv` module with
+  `generate_envrc()` and `update_envrc()`. The managed block is
+  delimited by `# --- himitsubako start ---` and `# --- himitsubako end ---`
+  markers; `update_envrc` preserves any user lines outside the markers
+  and replaces the managed block in place. Idempotent. Refuses to
+  operate on a `.envrc` with duplicate markers (would silently corrupt
+  user lines between blocks). The `secrets_file` path is `shlex.quote`d
+  before interpolation into the eval line so paths with spaces or shell
+  metacharacters cannot break the eval. New `hmb direnv-export` CLI
+  command regenerates the managed block on demand. `hmb init` uses the
+  new helper for the initial `.envrc`; `hmb set` calls `update_envrc()`
+  best-effort after a successful sops write.
+
+- **HMB-S011 — pydantic-settings source.** `HimitsubakoSettingsSource`
+  in `himitsubako.pydantic` extends `PydanticBaseSettingsSource` to
+  pull each settings field from a himitsubako backend or router. Use
+  in `settings_customise_sources` to mix backends in a single settings
+  model — `db_password` from SOPS, `oauth_client_secret` from Keychain,
+  routed by `.himitsubako.yaml`. Recommended source order documented
+  in the module: `init kwargs > env > himitsubako > dotenv > file_secret > defaults`.
+  Optional `[pydantic-settings]` extra; ImportError converts to a clear
+  BackendError naming the install command.
+
+### Config schema additions
+
+- `HimitsubakoConfig.credentials: dict[str, CredentialRoute]` — new
+  optional section for per-credential routing.
+- `BitwardenConfig.bin: str | None` and `BitwardenConfig.unlock_command: str | None`
+  — for HMB-S009.
+- `extra=forbid` on `CredentialRoute` rejects unknown fields.
+
+### Security
+
+- **T-005 mitigated** (HMB-S009): `bw` binary path can be pinned via
+  `HIMITSUBAKO_BW_BIN` or config to prevent PATH hijack.
+- **T-007 partially mitigated** (HMB-S009): `BW_SESSION` is never logged
+  or interpolated into error strings; `bw` stderr is sanitized to redact
+  base64 token-like substrings before re-raising. The OS-level
+  visibility of env vars to same-user processes remains an accepted
+  limitation of the env-var session model.
+- **T-008 mitigated** (HMB-S009): 30-second subprocess timeout on all
+  `bw` calls, matching the SOPS pattern from v0.1.1.
+- **T-020 mitigated** (HMB-S008): Keychain access delegates to the OS
+  via the keyring library; first access from a new binary triggers a
+  Touch ID / password prompt on macOS.
+- **T-022 mitigated via M-014** (HMB-S009): Documentation guidance on
+  safe `unlock_command` choices; the library does not log unlock_command
+  output.
+- **T-023 mitigated via M-015** (HMB-S008): Insecure-backend deny-list
+  at first call, with MRO-based subclass detection.
+
+### Test state
+
+- 80 → 156 passing tests (+76, +95%)
+- Coverage 86.27% → 84% (broader surface, same density)
+- ruff clean
+- Code review (python-reviewer): 2 CRITICAL + 4 HIGH findings, all
+  fixed before tag. Findings included BW_SESSION leak via stderr
+  passthrough (now redacted), BW_PASSWORD env var defense-in-depth
+  cleanup, keychain MRO bypass (now MRO-checked), direnv duplicate
+  markers (now refused), direnv shlex injection (now quoted).
+
+[0.2.0]: https://github.com/originalrgsec/himitsubako/commits/v0.2.0
 
 ## [0.1.1] - 2026-04-11
 

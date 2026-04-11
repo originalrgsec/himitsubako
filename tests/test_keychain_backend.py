@@ -27,32 +27,41 @@ class TestKeychainBackendImportError:
         from himitsubako.backends.keychain import KeychainBackend
         from himitsubako.errors import BackendError
 
+        # The real _import_keyring raises BackendError on ImportError, so the
+        # test simulates that exact failure mode rather than letting raw
+        # ImportError escape (which would mean the implementation forgot to
+        # wrap it).
         backend = KeychainBackend(service="myapp")
-        # Force the lazy import to fail by patching the helper
+        sim_failure = BackendError(
+            "keychain",
+            "keychain backend requires 'keyring'; "
+            "install with 'pip install himitsubako[keychain]'",
+        )
         with (
-            patch.object(
-                backend, "_import_keyring", side_effect=ImportError("no keyring")
-            ),
+            patch.object(backend, "_import_keyring", side_effect=sim_failure),
             pytest.raises(BackendError, match=r"\[keychain\]"),
         ):
             backend.get("ANY")
 
 
 class TestKeychainBackendDenyList:
-    """T-023 / M-015: refuse insecure default backends."""
+    """T-023 / M-015: refuse insecure default backends, including subclasses."""
 
-    def _patch_keyring(self, class_name: str):
+    def _make_fake_keyring(self, keyring_instance):
+        """Wrap a real instance in a fake module that exposes get_keyring()."""
         fake_module = MagicMock()
-        fake_keyring_obj = MagicMock()
-        fake_keyring_obj.__class__.__name__ = class_name
-        fake_module.get_keyring.return_value = fake_keyring_obj
+        fake_module.get_keyring.return_value = keyring_instance
         return fake_module
 
     def test_null_keyring_rejected(self):
         from himitsubako.backends.keychain import KeychainBackend
         from himitsubako.errors import BackendError
 
-        fake = self._patch_keyring("Null")
+        # Real class named exactly like a denied entry.
+        class Null:
+            pass
+
+        fake = self._make_fake_keyring(Null())
         backend = KeychainBackend(service="myapp")
         with (
             patch.object(backend, "_import_keyring", return_value=fake),
@@ -64,7 +73,10 @@ class TestKeychainBackendDenyList:
         from himitsubako.backends.keychain import KeychainBackend
         from himitsubako.errors import BackendError
 
-        fake = self._patch_keyring("PlaintextKeyring")
+        class PlaintextKeyring:
+            pass
+
+        fake = self._make_fake_keyring(PlaintextKeyring())
         backend = KeychainBackend(service="myapp")
         with (
             patch.object(backend, "_import_keyring", return_value=fake),
@@ -72,13 +84,35 @@ class TestKeychainBackendDenyList:
         ):
             backend.set("ANY", "value")
 
+    def test_subclass_of_denied_class_rejected_via_mro(self):
+        """A subclass cannot bypass the deny-list by renaming itself."""
+        from himitsubako.backends.keychain import KeychainBackend
+        from himitsubako.errors import BackendError
+
+        class PlaintextKeyring:
+            pass
+
+        class SafeWrapper(PlaintextKeyring):
+            pass
+
+        fake = self._make_fake_keyring(SafeWrapper())
+        backend = KeychainBackend(service="myapp")
+        with (
+            patch.object(backend, "_import_keyring", return_value=fake),
+            pytest.raises(BackendError, match=r"PlaintextKeyring"),
+        ):
+            backend.get("ANY")
+
     def test_macos_keyring_accepted(self):
         from himitsubako.backends.keychain import KeychainBackend
 
+        class Keyring:  # macOS keychain class name
+            def get_password(self, service, key):
+                return "actual_value"
+
+        instance = Keyring()
         fake = MagicMock()
-        macos_kr = MagicMock()
-        macos_kr.__class__.__name__ = "Keyring"  # macOS keychain class name
-        fake.get_keyring.return_value = macos_kr
+        fake.get_keyring.return_value = instance
         fake.get_password.return_value = "actual_value"
 
         backend = KeychainBackend(service="myapp")

@@ -98,21 +98,21 @@ class KeychainBackend:
         return keyring_module
 
     def _resolve_keyring(self):
-        """Import keyring and reject insecure backends."""
-        try:
-            keyring = self._import_keyring()
-        except ImportError as exc:
-            raise BackendError(
-                "keychain",
-                "keychain backend requires 'keyring'; "
-                "install with 'pip install himitsubako[keychain]'",
-            ) from exc
+        """Import keyring and reject insecure backends.
+
+        The deny-list check walks the resolved keyring's MRO so a
+        subclass of `PlaintextKeyring` (or any other denied class)
+        cannot bypass the gate by changing only its leaf class name.
+        """
+        keyring = self._import_keyring()
         resolved = keyring.get_keyring()
-        class_name = type(resolved).__name__
-        if class_name in _INSECURE_BACKEND_NAMES:
+        mro_names = {cls.__name__ for cls in type(resolved).__mro__}
+        bad = mro_names & _INSECURE_BACKEND_NAMES
+        if bad:
             raise BackendError(
                 "keychain",
-                f"keyring resolved to insecure backend '{class_name}'; "
+                f"keyring resolved to insecure backend '{type(resolved).__name__}' "
+                f"(MRO matches {sorted(bad)}); "
                 "install gnome-keyring (Linux), use macOS Keychain (Darwin), "
                 "or set keyring's preferred backend explicitly",
             )

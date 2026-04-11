@@ -81,7 +81,13 @@ class HimitsubakoSettingsSource(PydanticBaseSettingsSource):
     def get_field_value(
         self, field: Any, field_name: str
     ) -> tuple[Any, str, bool]:
-        """Look up a single field value. Required by PydanticBaseSettingsSource."""
+        """Look up a single field value. Matches PydanticBaseSettingsSource v2 contract.
+
+        pydantic-settings v2.13 declares ``get_field_value(self, field: FieldInfo,
+        field_name: str)`` (verified against the installed source at
+        site-packages/pydantic_settings/sources/base.py). Returns a
+        ``(value, field_name, value_is_complex)`` tuple.
+        """
         backend = self._resolve_backend()
         lookup_key = f"{self._prefix}{field_name}"
         value = backend.get(lookup_key)

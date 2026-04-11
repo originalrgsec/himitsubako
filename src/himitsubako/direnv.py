@@ -15,7 +15,10 @@ regenerated when individual secrets change.
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path  # noqa: TC003 — used at runtime in update_envrc
+
+from himitsubako.errors import BackendError
 
 _START = "# --- himitsubako start ---"
 _END = "# --- himitsubako end ---"
@@ -26,20 +29,29 @@ _HEADER_COMMENT = (
 
 def generate_envrc(secrets_file: str = ".secrets.enc.yaml") -> str:
     """Return the full content of a himitsubako-managed .envrc."""
+    quoted = shlex.quote(secrets_file)
     return (
         f"{_HEADER_COMMENT}\n"
         f"{_START}\n"
-        f'eval "$(sops -d --output-type dotenv {secrets_file} 2>/dev/null | '
+        f'eval "$(sops -d --output-type dotenv {quoted} 2>/dev/null | '
         "sed 's/^/export /')\" || true\n"
         f"{_END}\n"
     )
 
 
 def _managed_block(secrets_file: str) -> str:
-    """Return just the managed block (markers + body, no header comment)."""
+    """Return just the managed block (markers + body, no header comment).
+
+    The secrets_file path is shell-quoted with shlex.quote so a path
+    containing spaces, dollar signs, backticks, or other shell
+    metacharacters cannot break out of the eval line. This is defense
+    in depth — operators control this value via .himitsubako.yaml — but
+    it eliminates an entire class of injection risk.
+    """
+    quoted = shlex.quote(secrets_file)
     return (
         f"{_START}\n"
-        f'eval "$(sops -d --output-type dotenv {secrets_file} 2>/dev/null | '
+        f'eval "$(sops -d --output-type dotenv {quoted} 2>/dev/null | '
         "sed 's/^/export /')\" || true\n"
         f"{_END}\n"
     )
@@ -60,7 +72,17 @@ def update_envrc(envrc_path: Path, secrets_file: str = ".secrets.enc.yaml") -> N
         return
 
     existing = envrc_path.read_text()
-    if _START in existing and _END in existing:
+
+    start_count = existing.count(_START)
+    end_count = existing.count(_END)
+    if start_count > 1 or end_count > 1:
+        raise BackendError(
+            "direnv",
+            f".envrc contains {start_count} start markers and {end_count} "
+            "end markers; resolve duplicates manually before running this command",
+        )
+
+    if start_count == 1 and end_count == 1:
         # Replace the existing managed block in place. Try the trailing-\n
         # variant first; only fall back to bare _END if the file's last
         # marker really has no newline after it.

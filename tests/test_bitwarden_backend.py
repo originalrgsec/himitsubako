@@ -184,6 +184,28 @@ class TestBitwardenBackendSecrecyHygiene:
                 assert "supersecret_session_xyz" not in str(exc)
                 assert "supersecret_session_xyz" not in repr(exc)
 
+    def test_token_like_string_in_stderr_is_redacted(self, monkeypatch):
+        """A bw stderr that echoes a base64 token should NOT leak through."""
+        from himitsubako.backends.bitwarden import BitwardenBackend
+        from himitsubako.errors import BackendError
+
+        monkeypatch.setenv("BW_SESSION", "tok")
+        backend = BitwardenBackend(folder="myproject")
+
+        # 50-char base64-ish blob — long enough to trigger _TOKEN_LIKE
+        leaked_token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGhIjKlMn"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stdout="",
+                stderr=f"unexpected error session={leaked_token} ended",
+            )
+            try:
+                backend.get("ANY")
+            except BackendError as exc:
+                assert leaked_token not in str(exc)
+                assert "[REDACTED]" in str(exc)
+
     def test_credential_value_never_in_subprocess_argv(self, monkeypatch):
         """M-003: set() must pass values via stdin, not argv."""
         from himitsubako.backends.bitwarden import BitwardenBackend

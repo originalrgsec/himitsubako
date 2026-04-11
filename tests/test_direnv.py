@@ -83,3 +83,34 @@ class TestUpdateEnvrc:
         update_envrc(envrc, secrets_file=".secrets.enc.yaml")
         second = envrc.read_text()
         assert first == second
+
+    def test_duplicate_markers_refused(self, tmp_path):
+        """A user-mangled .envrc with two managed blocks is rejected."""
+        import pytest
+
+        from himitsubako.direnv import update_envrc
+        from himitsubako.errors import BackendError
+
+        envrc = tmp_path / ".envrc"
+        envrc.write_text(
+            f"{_START}\nbody1\n{_END}\nuser line\n{_START}\nbody2\n{_END}\n"
+        )
+        with pytest.raises(BackendError, match=r"resolve duplicates manually"):
+            update_envrc(envrc, secrets_file=".secrets.enc.yaml")
+
+    def test_secrets_file_with_spaces_is_quoted(self, tmp_path):
+        """A path with spaces must round-trip through shlex.quote."""
+        from himitsubako.direnv import generate_envrc
+
+        content = generate_envrc(secrets_file="my secrets/.enc.yaml")
+        # shlex.quote wraps in single quotes when whitespace is present
+        assert "'my secrets/.enc.yaml'" in content
+
+    def test_secrets_file_with_metacharacters_is_quoted(self):
+        """Shell metacharacters must not break out of the eval line."""
+        from himitsubako.direnv import generate_envrc
+
+        content = generate_envrc(secrets_file="$(rm -rf /).enc.yaml")
+        assert "$(rm -rf /).enc.yaml" not in content.split("'")[0]
+        # The dangerous string is wrapped in single quotes, neutralizing it
+        assert "'$(rm -rf /).enc.yaml'" in content

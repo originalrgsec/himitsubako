@@ -24,12 +24,23 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 
 from himitsubako.errors import BackendError
 
 _BW_TIMEOUT_SECONDS = 30
 _ENV_BW_BIN = "HIMITSUBAKO_BW_BIN"
+
+# Bitwarden's CLI sometimes echoes the session token verbatim in error
+# strings. Strip anything that looks like a base64 token (40+ chars of
+# the alphabet) before re-raising the error.
+_TOKEN_LIKE = re.compile(r"[A-Za-z0-9+/=]{40,}")
+
+
+def _redact_tokens(text: str) -> str:
+    """Replace any token-like substring with [REDACTED]."""
+    return _TOKEN_LIKE.sub("[REDACTED]", text or "")
 
 
 class BitwardenBackend:
@@ -195,6 +206,8 @@ class BitwardenBackend:
     ) -> subprocess.CompletedProcess[str]:
         bw_bin = self._resolve_bin()
         argv = [bw_bin, *args]
+        # Build a fresh env dict per call so sensitive extra_env keys
+        # cannot leak into a subsequent _run_bw invocation.
         env = os.environ.copy()
         if extra_env:
             env.update(extra_env)
@@ -219,10 +232,23 @@ class BitwardenBackend:
                 "bitwarden",
                 f"bw {args[0] if args else ''} timed out after {_BW_TIMEOUT_SECONDS}s",
             ) from exc
+        finally:
+            # Defense in depth: explicitly drop any sensitive extra_env keys
+            # from the local env dict so a future refactor that promotes env
+            # to a longer-lived scope cannot accidentally leak them.
+            if extra_env:
+                for k in extra_env:
+                    env.pop(k, None)
 
     def _raise_friendly(self, stderr: str) -> None:
-        """Convert raw bw stderr into a clean BackendError."""
-        text = (stderr or "").strip()
+        """Convert raw bw stderr into a clean BackendError.
+
+        Sanitizes the stderr text before interpolation so any session
+        token or master password that bw echoed into its own error
+        output cannot leak through BackendError.detail into log
+        aggregators or uncaught-exception handlers.
+        """
+        text = _redact_tokens((stderr or "").strip())
         lower = text.lower()
         if "locked" in lower:
             raise BackendError(
