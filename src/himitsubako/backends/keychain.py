@@ -80,6 +80,15 @@ class KeychainBackend:
             "enumerate keys via your config file or secrets registry",
         )
 
+    def check_availability(self) -> None:
+        """Ping-style availability check for `hmb status`.
+
+        Imports keyring, resolves a backend, and walks the deny-list MRO.
+        Raises BackendError on any failure; returns None on success. Does
+        not read, write, or enumerate any credential.
+        """
+        self._resolve_keyring()
+
     def _import_keyring(self):
         """Lazy import wrapper, kept as a method so tests can patch it."""
         try:

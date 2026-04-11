@@ -13,6 +13,7 @@ from himitsubako.cli.secrets import (
     list_secrets,
     set_secret,
 )
+from himitsubako.cli.status import status
 
 
 @click.group()
@@ -28,3 +29,4 @@ main.add_command(delete_secret)
 main.add_command(list_secrets)
 main.add_command(rotate_key)
 main.add_command(direnv_export)
+main.add_command(status)

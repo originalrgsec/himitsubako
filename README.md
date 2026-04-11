@@ -33,7 +33,7 @@ Combined, you get: encrypted secrets committed to git, decrypted into your shell
 **When you need the library**, himitsubako provides:
 
 1. A Python API for runtime credential lookup, rotation, and backend switching
-2. A CLI for interactive secret management (`hmb get`, `hmb set`, `hmb list`, `hmb delete`, `hmb rotate`)
+2. A CLI for interactive secret management (`hmb get`, `hmb set`, `hmb list`, `hmb delete`, `hmb status`, `hmb rotate`)
 3. A [`pydantic-settings`](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) source for declarative credential loading in Python applications
 4. Opinionated scaffolding (`hmb init`) that creates your age key, writes the `.sops.yaml`, generates an example `.envrc`, and encrypts an empty secrets file — all in one command
 5. Additional backends for cases where SOPS doesn't fit: macOS Keychain (via `keyring`), Bitwarden CLI (via `bw` subprocess), environment variables
@@ -94,6 +94,16 @@ Or programmatically, if direnv isn't your style:
 ```python
 from himitsubako import get
 key = get("DEVTO_API_KEY")
+```
+
+Diagnose configuration and backend availability:
+
+```sh
+hmb status
+# prints config path, default backend, SOPS binary and age recipients,
+# any router patterns, and a one-line availability check per backend
+# (e.g. "sops: ok (sops 3.8.1)", "keychain: unavailable (...)").
+# Pass --json to emit the same information as a single JSON object.
 ```
 
 Rotate the master age key:

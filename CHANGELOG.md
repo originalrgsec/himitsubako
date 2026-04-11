@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HMB-S019 — `hmb status` diagnostic command.** Read-only introspection
+  of the active configuration. Prints the resolved config path, default
+  backend, SOPS binary (matching the HMB-S017 T-001 resolution order),
+  age recipients parsed from `.sops.yaml`, the `BackendRouter` table in
+  declaration order, and a one-line availability check per referenced
+  backend. Availability is determined by ping-style calls only — never
+  reads, writes, or enumerates any credential. `--json` emits the same
+  data as a single JSON object for scripting. Exit 0 even when some
+  backends are unavailable (unavailability is information); exit 1
+  only if the config file is malformed. Adds a public
+  `KeychainBackend.check_availability()` method so the status command
+  no longer depends on a private method.
+
 - **HMB-S018 — `hmb delete` CLI command.** Removes a secret from the
   configured backend. `hmb delete KEY` prompts for confirmation and
   names the resolved target backend (e.g., the concrete backend under
