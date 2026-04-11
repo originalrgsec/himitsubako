@@ -53,8 +53,22 @@ dev = [
     "types-PyYAML>=6.0",
 ]
 docs = [
-    "mkdocs>=1.6",
-    "mkdocs-material>=9.5",
+    # License-checked and health-scored 2026-04-11 (HMB Sprint 3 prep).
+    # mkdocs 1.6.1 (BSD-2-Clause), mkdocs-material 9.7.6 (MIT).
+    # See Obsidian/code/oss-health-policy-scores.md for the audit trail.
+    "mkdocs>=1.6,<2.0",
+    "mkdocs-material>=9.7,<10.0",
+]
+publish = [
+    # License-checked and health-scored 2026-04-11 (HMB Sprint 3 prep).
+    # Used by the release workflow only (HMB-S016), never installed
+    # into runtime or dev/test dependency sets. See
+    # Obsidian/code/oss-health-policy-scores.md for the audit trail.
+    # build 1.4.3 excluded because it was <7 days old at scoring time
+    # (supply-chain quarantine). Pin can be loosened once 1.4.3 ages
+    # past the quarantine window.
+    "build>=1.4,<2.0,!=1.4.3",
+    "twine>=6.2,<7.0",
 ]
 
 [project.scripts]
