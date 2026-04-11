@@ -1,6 +1,6 @@
 [project]
 name = "himitsubako"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Multi-backend credential abstraction for solo Python developers. SOPS+age, macOS Keychain, Bitwarden CLI, direnv, env vars."
 readme = "README.md"
 license = { text = "MIT" }
