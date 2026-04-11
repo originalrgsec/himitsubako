@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-11
+
+First public PyPI release. The v0.3.0 tag exists in git history but
+was never published to PyPI: the release workflow's `publish` step
+failed at `docker pull` because `pypa/gh-action-pypi-publish` is a
+Docker container action whose registry image is tagged by release
+version, not by commit SHA. The action wrapper attempted to pull
+`ghcr.io/pypa/gh-action-pypi-publish:<commit-sha>` and the registry
+returned `manifest unknown` because no such tag exists. Nothing
+reached pypi.org during the failed run.
+
+### Fixed
+
+- **Release workflow — `pypa/gh-action-pypi-publish` switched from
+  SHA-pin to version tag (`@v1.13.0`).** Documented as the only
+  Docker-container-action exception to the project's SHA-pinning
+  policy. PyPA does not move version tags, the action is published
+  by the official Python Packaging Authority (also the operator of
+  pypi.org), and v1.13.0 is well past the 7-day quarantine window —
+  the trust delta vs SHA pinning is small in practice. The header
+  comment in `.github/workflows/release.yml` documents the
+  exception in full so future maintainers do not "fix" it back.
+
+No library code changes between v0.3.0 and v0.3.1; the entire diff is
+the one-line action pin in the release workflow plus this CHANGELOG
+entry. Everything in the [0.3.0] section below also applies to v0.3.1.
+
 ## [0.3.0] - 2026-04-11
 
 Sprint 3 closes himitsubako's path to PyPI. Seven stories land together:
