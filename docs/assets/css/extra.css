@@ -63,6 +63,176 @@
   border-bottom: 1px solid rgba(212, 160, 23, 0.15);
 }
 
+/* ---- Hero Section (landing page) ---- */
+.rg-hero {
+  position: relative;
+  background: linear-gradient(
+    160deg,
+    #0A0A14 0%,
+    #12121E 40%,
+    #1B2A4A 100%
+  );
+  padding: 6rem 2rem 4rem;
+  text-align: center;
+  overflow: hidden;
+}
+
+.rg-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.rg-hero__avatar {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--rg-gold);
+  box-shadow: 0 0 24px var(--rg-gold-glow), 0 0 48px rgba(212, 160, 23, 0.15);
+  margin: 0 auto 2rem;
+  display: block;
+}
+
+.rg-hero__tagline {
+  font-size: 1.5rem;
+  color: var(--rg-text-light);
+  max-width: 640px;
+  margin: 0 auto 1rem;
+  line-height: 1.6;
+}
+
+.rg-hero__sub {
+  font-size: 1.05rem;
+  color: var(--rg-text-muted);
+  max-width: 560px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.5;
+}
+
+.rg-hero__actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ---- Buttons ---- */
+.rg-btn {
+  display: inline-block;
+  padding: 0.85rem 2rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.rg-btn--primary {
+  background: var(--rg-gold);
+  color: var(--rg-charcoal) !important;
+}
+
+.rg-btn--primary:hover {
+  background: var(--rg-gold-light);
+  box-shadow: 0 0 24px var(--rg-gold-glow), 0 0 48px rgba(212, 160, 23, 0.2);
+  color: var(--rg-charcoal) !important;
+}
+
+.rg-btn--secondary {
+  background: transparent;
+  color: var(--rg-royal-blue-light);
+  border: 2px solid var(--rg-royal-blue);
+}
+
+.rg-btn--secondary:hover {
+  background: rgba(58, 91, 160, 0.1);
+  box-shadow: 0 0 20px var(--rg-royal-blue-glow);
+  color: var(--rg-royal-blue-light);
+}
+
+/* ---- Feature Cards ---- */
+.rg-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.rg-feature {
+  background: rgba(18, 18, 30, 0.6);
+  border: 1px solid rgba(58, 91, 160, 0.2);
+  border-radius: 10px;
+  padding: 2rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.rg-feature:hover {
+  border-color: rgba(212, 160, 23, 0.4);
+  box-shadow: 0 4px 24px rgba(212, 160, 23, 0.1);
+}
+
+.rg-feature__icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.rg-feature__icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.rg-feature__title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--rg-gold-light);
+  margin-bottom: 0.5rem;
+}
+
+.rg-feature__desc {
+  color: var(--rg-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* ---- Quick Install Block ---- */
+.rg-install {
+  max-width: 700px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+  text-align: center;
+}
+
+.rg-install__title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--rg-text-light);
+  margin-bottom: 1.5rem;
+}
+
+/* ---- Section Headers ---- */
+.rg-section {
+  text-align: center;
+  max-width: 800px;
+  margin: 4rem auto 2rem;
+  padding: 0 1rem;
+}
+
+.rg-section__title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--rg-text-light);
+  margin-bottom: 0.75rem;
+}
+
+.rg-section__desc {
+  color: var(--rg-text-muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
 /* ---- Gold glow effect for interactive elements ---- */
 a:hover,
 .md-nav__link:hover {
@@ -102,8 +272,44 @@ a:hover,
   background-color: rgba(58, 91, 160, 0.1);
 }
 
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .rg-hero {
+    padding: 4rem 1.5rem 3rem;
+  }
+
+  .rg-hero__tagline {
+    font-size: 1.25rem;
+  }
+
+  .rg-features {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---- Light mode overrides ---- */
 [data-md-color-scheme="default"] {
   --md-typeset-color: #12121E;
   --md-typeset-a-color: #A67C00;
+}
+
+[data-md-color-scheme="default"] .rg-hero {
+  background: linear-gradient(160deg, #12121E 0%, #1B2A4A 40%, #0A0A14 100%);
+}
+
+[data-md-color-scheme="default"] .rg-feature {
+  background: #F5F5F8;
+  border-color: rgba(58, 91, 160, 0.2);
+}
+
+[data-md-color-scheme="default"] .rg-feature__desc {
+  color: #1B2A4A;
+}
+
+[data-md-color-scheme="default"] .rg-section__title {
+  color: #12121E;
+}
+
+[data-md-color-scheme="default"] .rg-section__desc {
+  color: #1B2A4A;
 }
