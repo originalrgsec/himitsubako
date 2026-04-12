@@ -1,6 +1,7 @@
 site_name: himitsubako
 site_description: Multi-backend credential abstraction for solo Python developers — SOPS+age, macOS Keychain, Bitwarden CLI, direnv, env vars.
 site_url: https://originalrgsec.github.io/himitsubako/
+site_author: originalrgsec
 repo_url: https://github.com/originalrgsec/himitsubako
 repo_name: originalrgsec/himitsubako
 edit_uri: edit/main/docs/
@@ -12,33 +13,45 @@ site_dir: site
 theme:
   name: material
   language: en
+  logo: assets/images/profile-avatar.jpg
+  favicon: assets/images/profile-avatar.jpg
+  font: false
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
   features:
+    - navigation.instant
+    - navigation.tracking
     - navigation.tabs
     - navigation.sections
+    - navigation.expand
     - navigation.top
     - navigation.footer
     - toc.integrate
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.code.annotate
     - content.action.edit
-  palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+    - toc.follow
   icon:
     repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+extra_css:
+  - assets/css/extra.css
 
 markdown_extensions:
   - admonition
@@ -57,9 +70,11 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
-
-plugins:
-  - search
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 # Keep internal artifacts (story archives, per-release manifests) out of
 # the public site. The changelog page renders CHANGELOG.md directly via
@@ -86,3 +101,11 @@ nav:
       - Release attestations: security/attestations.md
   - Why not ...?: why-not.md
   - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/originalrgsec/himitsubako
+  generator: false
+
+copyright: Copyright &copy; 2026 originalrgsec
