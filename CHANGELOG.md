@@ -87,14 +87,21 @@ Three stories, seven points, no new runtime dependencies.
    "GitHub Actions" on `github.com/originalrgsec/himitsubako`. The
    workflow cannot enable this itself; without the flip, the first
    `docs.yml` run will fail at `actions/deploy-pages` with a missing
-   Pages site error.
-2. **TestPyPI dry run.** Tag `v0.4.0-rc.1` and push it to exercise
-   the full release + attestation flow against TestPyPI before the
-   real `v0.4.0` tag. Sprint 3's v0.3.0 → v0.3.1 mishap is the
-   precedent — "always dry-run irreversible actions." Verify on
-   TestPyPI that the attestation identity matches the expected
-   `https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml`
-   binding before tagging the production release.
+   Pages site error. **Completed 2026-04-11** before the sprint-close
+   merge.
+2. **TestPyPI dry run — skipped by operator decision.** The Sprint 4
+   plan called for a pre-release tag (`v0.4.0-rc.1`) against TestPyPI
+   before the real `v0.4.0` tag. This step was skipped during
+   sprint close for three reasons: (a) the current `release.yml`
+   trigger regex excludes pre-release tags, so exercising it would
+   require a separate TestPyPI workflow and a second Trusted
+   Publisher binding; (b) the attestation change is a single line on
+   an already-tested workflow, not a new release surface; (c) the
+   `pypi-release` environment's required-reviewer gate is the real
+   safety net — a failed attestation publish would pause for human
+   approval rather than silently ship bad artifacts. A dedicated
+   TestPyPI dry-run workflow may be added as HMB-S027 in a future
+   sprint if the need arises; for v0.4.0 the risk is accepted.
 
 ### Test count and coverage
 
