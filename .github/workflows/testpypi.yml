@@ -1,25 +1,27 @@
-# HMB-S016: Release workflow — publish to PyPI via Trusted Publishers (OIDC).
+# HMB-S027: TestPyPI dry-run workflow — publish release candidates to TestPyPI.
 #
-# Pre-release dry runs: push a v*.*.*-rc* tag to trigger testpypi.yml,
-# which publishes to TestPyPI with the same verify + build + attestation
-# pipeline. See testpypi.yml (HMB-S027) for details.
+# This workflow mirrors release.yml but targets TestPyPI instead of PyPI.
+# It fires on pre-release tags (v*-rc*) so every release can be rehearsed
+# before the real publish. Motivated by the v0.3.0 → v0.3.1 incident where
+# a Docker image pull failure was only caught on the production tag.
 #
 # Supply-chain notes
 # ------------------
-# - Same SHA-pinning policy as the CI workflow. Every `uses:` reference
-#   is pinned to a commit SHA, not a tag (supply-chain policy per
-#   Obsidian/code/supply-chain-protection.md). Tag pointers below the
-#   SHA are documentation only.
-# - `sops` and `age` are installed from upstream releases with SHA256
-#   verification, identical to the CI workflow. The release build only
-#   needs them for the integration test step; publish itself does not.
-# - **No long-lived PyPI API token.** Production publish uses Trusted
-#   Publishers (OIDC) bound to this repository + this workflow file +
-#   the `pypi-release` environment. The repository owner must configure
-#   the binding on pypi.org before the first release tag runs.
-# - The `pypi-release` environment has a required-reviewer gate so an
-#   accidental tag push cannot auto-publish. A human must approve the
-#   job before the publish step runs.
+# - Same SHA-pinning policy as release.yml. Every `uses:` reference is
+#   pinned to a commit SHA, not a tag. Tag pointers below the SHA are
+#   documentation only.
+# - `sops` and `age` installed from upstream releases with SHA256
+#   verification, identical to ci.yml and release.yml.
+# - **No long-lived TestPyPI API token.** Publish uses Trusted Publishers
+#   (OIDC) bound to this repository + this workflow file + the
+#   `testpypi-release` environment.
+# - The `testpypi-release` environment has a required-reviewer gate to
+#   prevent accidental RC tag pushes from publishing.
+#
+# Docker container action exception:
+#   Same as release.yml — pypa/gh-action-pypi-publish is pinned to a
+#   version tag (v1.13.0), not a commit SHA. See release.yml header for
+#   the full rationale.
 #
 # Action pins (tag at pinning time → commit SHA)
 #   actions/checkout               v4.3.0   08eba0b27e820071cde6df949e0beb9ba4906955
@@ -27,38 +29,24 @@
 #   actions/upload-artifact        v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02
 #   actions/download-artifact      v4.3.0   d3f86a106a0bac45b974a628896c90dbdf5c8093
 #
-# Docker container action exception:
-#   pypa/gh-action-pypi-publish is a Docker container action whose
-#   registry image is tagged by release version, not by commit SHA.
-#   Pinning to a commit SHA causes the action wrapper to attempt
-#   `docker pull ghcr.io/pypa/gh-action-pypi-publish:<sha>`, which
-#   fails with `manifest unknown` because no SHA-tagged image
-#   exists. PyPA's published guidance for this action is to pin to
-#   a specific version tag instead. We pin to v1.13.0 (released
-#   2025-09-04, well past the 7-day quarantine window) and accept
-#   the slightly weaker supply-chain posture for this one action.
-#   PyPA does not move version tags, so the trust delta vs SHA
-#   pinning is small in practice.
-#
-# Binary pins — same as ci.yml:
+# Binary pins — same as ci.yml and release.yml:
 #   sops v3.12.2  14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
 #   age  v1.3.1   bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
 
-name: release
+name: testpypi
 
 on:
   push:
     tags:
-      # Final v*.*.* tags only. Pre-release tags (v*-rc*, v*-beta*)
-      # are intentionally excluded until a decision is made on whether
-      # to publish them.
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      # Pre-release tags only. Mutually exclusive with release.yml's
+      # v[0-9]+.[0-9]+.[0-9]+ pattern — no overlap possible.
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc*'
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: testpypi-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -154,7 +142,9 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
+          # Strip the v prefix and any -rc* suffix to get the base version
           version="${tag#v}"
+          version="${version%%-rc*}"
           pyproject_version=$(uv run python -c "import tomllib; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
           init_version=$(uv run python -c "from himitsubako import __version__; print(__version__)")
           if [[ "$pyproject_version" != "$version" ]]; then
@@ -165,7 +155,7 @@ jobs:
             echo "ERROR: tag $tag implies version $version but himitsubako.__version__ is $init_version" >&2
             exit 1
           fi
-          echo "Tag, pyproject.toml, and __version__ all agree on $version."
+          echo "Tag base version $version matches pyproject.toml and __version__."
 
       - name: Build sdist and wheel
         run: uv run python -m build
@@ -182,25 +172,15 @@ jobs:
           retention-days: 14
 
   publish:
-    name: publish to PyPI (Trusted Publishers OIDC)
+    name: publish to TestPyPI (Trusted Publishers OIDC)
     needs: build
     runs-on: ubuntu-latest
-    # Required-reviewer gate: the pypi-release environment must be
-    # configured on the repository (Settings → Environments) with at
-    # least one required reviewer (the maintainer). That reviewer is
-    # the human approval on every release.
     environment:
-      name: pypi-release
-      url: https://pypi.org/project/himitsubako/
+      name: testpypi-release
+      url: https://test.pypi.org/project/himitsubako/
     permissions:
-      # id-token: write is required by BOTH Trusted Publishers (for the
-      # short-lived PyPI OIDC token) AND Sigstore attestations (for the
-      # keyless signing identity). Same permission, two consumers.
       id-token: write
       contents: read
-      # attestations: write is required by `pypa/gh-action-pypi-publish`
-      # when `attestations: true` is set; it scopes the minting of
-      # PEP 740 attestation bundles to this job only.
       attestations: write
     steps:
       - name: Download dist artifact
@@ -209,34 +189,12 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Publish to PyPI via Trusted Publishers
+      - name: Publish to TestPyPI via Trusted Publishers
         # Tag-pinned (NOT SHA-pinned) — see the "Docker container action
-        # exception" note in the header. v1.13.0 release is 2025-09-04
-        # and supports PEP 740 attestations (feature added in v1.12.0).
-        #
-        # PEP 740 / Sigstore provenance attestations
-        # ------------------------------------------
-        # `attestations: true` makes the action mint a Sigstore
-        # attestation bundle for each wheel + sdist and attach it to
-        # the PyPI release. The signing identity is bound to the
-        # GitHub Actions workflow run via short-lived OIDC credentials;
-        # the public binding is:
-        #
-        #   https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml
-        #
-        # Users can verify a downloaded release with:
-        #   python -m sigstore verify identity \
-        #     --cert-identity https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml@refs/tags/<TAG> \
-        #     --cert-oidc-issuer https://token.actions.githubusercontent.com \
-        #     himitsubako-<VERSION>-py3-none-any.whl
-        #
-        # See docs/security/attestations.md for the full verification
-        # guide. T-034 and T-038 in the threat model track the residual
-        # risks (binding misconfiguration and downstream non-verification).
+        # exception" note in the header.
         uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           packages-dir: dist/
-          # No `password:` — OIDC Trusted Publisher binding on PyPI
-          # provides the short-lived token automatically.
+          repository-url: https://test.pypi.org/legacy/
           attestations: true
           verbose: true
