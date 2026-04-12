@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-11
+
+Sprint 5 expands distribution reach beyond PyPI and closes the macOS CI gap.
+Three stories, seven points, no library code changes.
+
+### Added
+
+- **macOS runner for keychain integration tests (HMB-S024).** The CI
+  workflow now includes a `test-macos` job on `macos-latest` (arm64) that
+  exercises the keychain backend against a real macOS login Keychain.
+  Uses SHA256-verified sops + age darwin-arm64 binaries, single Python
+  3.13 to control 10x macOS runner cost, and a runtime arch assertion
+  to fail clearly if the runner image shifts to x86_64. All `uses:`
+  directives are SHA-pinned per supply-chain policy.
+- **conda-forge recipe (HMB-S025).** A `recipe.yaml` (v1 format, CEP 13)
+  for conda-forge was written and submitted as
+  [conda-forge/staged-recipes#32938](https://github.com/conda-forge/staged-recipes/pull/32938).
+  Uses PyPI sdist as source, `noarch: python`, and lists all five
+  runtime dependencies. Merge is controlled by conda-forge maintainers.
+  Local copy at `conda/recipe.yaml`.
+- **Homebrew tap (HMB-S026).** A new repo
+  [originalrgsec/homebrew-tap](https://github.com/originalrgsec/homebrew-tap)
+  provides `brew install originalrgsec/tap/himitsubako`. The formula
+  passes `brew audit --new` and `brew test` clean. Includes all
+  transitive Python dependencies as resource stanzas, depends on Rust
+  for building pydantic-core from sdist, and recommends `sops` + `age`.
+
 ## [0.4.0] - 2026-04-11
 
 Sprint 4 closes the loops still open after the v0.3.1 PyPI publish:

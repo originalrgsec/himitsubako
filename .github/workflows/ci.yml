@@ -17,9 +17,13 @@
 #   astral-sh/setup-uv          v5.4.1   0c5e2b8115b80b4c7c5ddf6ffdd634974642d182
 #   actions/upload-artifact     v4.6.2   ea165f8d65b6e75b540449e92b4886f43607fa02
 #
-# Binary pins (version → linux amd64 SHA256)
-#   sops v3.12.2   14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
-#   age  v1.3.1    bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+# Binary pins (version → SHA256)
+#   sops v3.12.2
+#     linux amd64    14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
+#     darwin arm64   284edc64acf91ca249f227ffa2b444632656e4e1ac02baa26bed7051a7d51ce5
+#   age  v1.3.1
+#     linux amd64    bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+#     darwin arm64   01120ea2cbf0463d4c6bd767f99f3271bbed1cdc8a9aa718a76ba1fe4f01998b
 #
 # To bump a pin, edit both the SHA (line that GitHub actually reads)
 # and the comment (human-readable version), re-resolve via
@@ -42,8 +46,10 @@ concurrency:
 env:
   SOPS_VERSION: v3.12.2
   SOPS_LINUX_AMD64_SHA256: 14e2e1ba3bef31e74b70cf0b674f6443c80f6c5f3df15d05ffc57c34851b4998
+  SOPS_DARWIN_ARM64_SHA256: 284edc64acf91ca249f227ffa2b444632656e4e1ac02baa26bed7051a7d51ce5
   AGE_VERSION: v1.3.1
   AGE_LINUX_AMD64_SHA256: bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+  AGE_DARWIN_ARM64_SHA256: 01120ea2cbf0463d4c6bd767f99f3271bbed1cdc8a9aa718a76ba1fe4f01998b
 
 jobs:
   test:
@@ -128,3 +134,66 @@ jobs:
           path: coverage.xml
           if-no-files-found: warn
           retention-days: 14
+
+  # HMB-S024: macOS keychain integration tests.
+  #
+  # Runs the `macos`-marked integration tests against a real macOS login
+  # Keychain (GitHub Actions macOS runners have an unlocked login Keychain
+  # by default). Single Python version (3.13) to control runner-minute
+  # cost — macOS runners are 10x the cost of Linux. Python version
+  # compatibility is already covered by the Linux matrix above.
+  test-macos:
+    name: test-macos (keychain)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Assert arm64 runner
+        run: |
+          arch=$(uname -m)
+          [ "$arch" = "arm64" ] || { echo "::error::Expected arm64 runner, got $arch — binary SHA256 pins are arm64-only"; exit 1; }
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ffdd634974642d182  # v5.4.1
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install sops (pinned + SHA256 verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.darwin.arm64"
+          curl -fsSL -o sops-bin "$url"
+          echo "${SOPS_DARWIN_ARM64_SHA256}  sops-bin" | shasum -a 256 -c -
+          install -m 0755 sops-bin "$HOME/.local/bin/sops"
+          rm -f sops-bin
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/sops" --version
+
+      - name: Install age (pinned + SHA256 verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-darwin-arm64.tar.gz"
+          curl -fsSL -o age.tar.gz "$url"
+          echo "${AGE_DARWIN_ARM64_SHA256}  age.tar.gz" | shasum -a 256 -c -
+          tar -xzf age.tar.gz
+          install -m 0755 age/age "$HOME/.local/bin/age"
+          install -m 0755 age/age-keygen "$HOME/.local/bin/age-keygen"
+          rm -rf age age.tar.gz
+          "$HOME/.local/bin/age" --version
+          "$HOME/.local/bin/age-keygen" --help >/dev/null 2>&1 || true
+
+      - name: Install project (all extras + dev)
+        run: uv sync --all-extras --dev
+
+      - name: Keychain integration tests
+        run: >-
+          uv run pytest tests/integration/test_keychain_real.py
+          --override-ini="addopts=-v --tb=short"
+          -m "integration and macos"
