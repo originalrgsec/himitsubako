@@ -1,6 +1,6 @@
 # Release attestations (PEP 740 / Sigstore)
 
-Starting with **v0.4.0**, every himitsubako release on PyPI ships with a
+Starting with **v0.4.0** (and every release since), every himitsubako release on PyPI ships with a
 [PEP 740](https://peps.python.org/pep-0740/) provenance attestation signed by
 [Sigstore](https://www.sigstore.dev/). The attestation cryptographically binds
 the release artifacts (wheel + sdist) to the exact GitHub Actions workflow run
@@ -30,7 +30,7 @@ The attestation does **not** cover:
   `git tag -v <tag>` if the tag is signed, or by checking the GitHub release
   page against the tag).
 - The reproducibility of the build (himitsubako does not ship reproducible
-  builds as of v0.4.0).
+  builds).
 
 ## The expected signing identity
 
@@ -55,6 +55,12 @@ the release as compromised and do not install it.
 
 ## How to verify a release
 
+!!! info "Substitute your version"
+    Every command below uses `<VERSION>` as a placeholder (e.g., `0.5.0`).
+    Replace it with the version you actually installed before running anything.
+    Git tag arguments use the `v` prefix (`v0.5.0`), while pip and filename
+    arguments do not (`0.5.0`).
+
 There are two supported verification paths: the GitHub CLI and the
 `sigstore` Python package. Either is sufficient.
 
@@ -66,10 +72,10 @@ check it against the GitHub repository identity in one shot.
 
 ```sh
 # Download the wheel from PyPI (or use one you already have cached)
-pip download himitsubako==0.4.0 --no-deps --dest /tmp/himitsubako-verify
+pip download himitsubako==<VERSION> --no-deps --dest /tmp/himitsubako-verify
 
 # Verify the attestation against the repo identity
-gh attestation verify /tmp/himitsubako-verify/himitsubako-0.4.0-py3-none-any.whl \
+gh attestation verify /tmp/himitsubako-verify/himitsubako-<VERSION>-py3-none-any.whl \
   --repo originalrgsec/himitsubako
 ```
 
@@ -80,8 +86,8 @@ Loaded digest sha256:... for file:///tmp/himitsubako-verify/...
 ✓ Verification succeeded!
   - Attestation #1
     - Build repo: originalrgsec/himitsubako
-    - Build workflow: .github/workflows/release.yml@refs/tags/v0.4.0
-    - Signer workflow: .github/workflows/release.yml@refs/tags/v0.4.0
+    - Build workflow: .github/workflows/release.yml@refs/tags/v<VERSION>
+    - Signer workflow: .github/workflows/release.yml@refs/tags/v<VERSION>
 ```
 
 ### Option 2: `python -m sigstore verify identity`
@@ -92,16 +98,15 @@ want to pin their toolchain to pip-installable tools.
 
 ```sh
 pip install sigstore
-pip download himitsubako==0.4.0 --no-deps --dest /tmp/himitsubako-verify
+pip download himitsubako==<VERSION> --no-deps --dest /tmp/himitsubako-verify
 
 python -m sigstore verify identity \
-  --cert-identity 'https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml@refs/tags/v0.4.0' \
+  --cert-identity 'https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml@refs/tags/v<VERSION>' \
   --cert-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  /tmp/himitsubako-verify/himitsubako-0.4.0-py3-none-any.whl
+  /tmp/himitsubako-verify/himitsubako-<VERSION>-py3-none-any.whl
 ```
 
-Replace `v0.4.0` with the version you are actually installing. A successful
-verify prints `OK` on the artifact line and exits 0.
+A successful verify prints `OK` on the artifact line and exits 0.
 
 ## What verification does not replace
 
