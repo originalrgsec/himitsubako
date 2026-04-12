@@ -5,7 +5,7 @@ from __future__ import annotations
 import click
 
 from himitsubako.cli.init import init
-from himitsubako.cli.rotate import rotate_key
+from himitsubako.cli.rotate import rotate_credential, rotate_key
 from himitsubako.cli.secrets import (
     delete_secret,
     direnv_export,
@@ -28,5 +28,6 @@ main.add_command(set_secret)
 main.add_command(delete_secret)
 main.add_command(list_secrets)
 main.add_command(rotate_key)
+main.add_command(rotate_credential)
 main.add_command(direnv_export)
 main.add_command(status)

@@ -24,23 +24,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 
+from himitsubako._redaction import redact_tokens as _redact_tokens
 from himitsubako.errors import BackendError
 
 _BW_TIMEOUT_SECONDS = 30
 _ENV_BW_BIN = "HIMITSUBAKO_BW_BIN"
-
-# Bitwarden's CLI sometimes echoes the session token verbatim in error
-# strings. Strip anything that looks like a base64 token (40+ chars of
-# the alphabet) before re-raising the error.
-_TOKEN_LIKE = re.compile(r"[A-Za-z0-9+/=]{40,}")
-
-
-def _redact_tokens(text: str) -> str:
-    """Replace any token-like substring with [REDACTED]."""
-    return _TOKEN_LIKE.sub("[REDACTED]", text or "")
 
 
 class BitwardenBackend:

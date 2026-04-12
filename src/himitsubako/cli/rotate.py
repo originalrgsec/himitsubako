@@ -1,12 +1,34 @@
-"""hmb rotate-key — re-encrypt secrets with a new age key."""
+"""hmb rotate (credential value) and hmb rotate-key (age master key).
+
+Two distinct commands, deliberately kept in the same module so the
+distinction is visible at a glance:
+
+- `hmb rotate <credential>` (HMB-S021) rotates the VALUE of a single
+  credential by routing through BackendRouter, then writes one JSON
+  Lines entry to `~/.himitsubako/audit.log`.
+- `hmb rotate-key` (HMB-S005) re-encrypts the secrets file under a new
+  age master key using `sops updatekeys`.
+"""
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
+import sys
 from pathlib import Path
 
 import click
 import yaml
+
+from himitsubako.audit import write_audit_entry
+from himitsubako.config import find_config, load_config
+from himitsubako.errors import BackendError
+from himitsubako.router import BackendRouter
+
+
+def _stdin_is_tty() -> bool:
+    """Indirection for testability — patched in tests to simulate TTY/pipe."""
+    return sys.stdin.isatty()
 
 
 def _read_public_key(keys_path: Path) -> str:
@@ -98,3 +120,95 @@ def rotate_key(new_key: str, dry_run: bool) -> None:
         click.echo(f"  Skip {secrets_file} (file does not exist)")
 
     click.echo("Key rotation complete.")
+
+
+@click.command("rotate")
+@click.argument("credential")
+@click.option(
+    "--value-from-file",
+    default=None,
+    type=click.Path(),
+    help="Read the new value from a file instead of stdin.",
+)
+def rotate_credential(credential: str, value_from_file: str | None) -> None:
+    """Rotate a credential's VALUE and append an audit log entry.
+
+    Different from `hmb rotate-key`: this rotates one credential's value,
+    while `hmb rotate-key` rotates the age master key. Reads the new
+    value from stdin (pipe) by default; use --value-from-file to read
+    from a file. Argv-based secret entry via --value is deliberately
+    not supported.
+    """
+    # 1. Read the new value. TTY stdin is refused (secrets must not be
+    #    typed interactively into the rotate flow — use hmb set for that).
+    if value_from_file is not None:
+        file_path = Path(value_from_file)
+        if not file_path.exists():
+            click.echo(f"Error: file not found: {value_from_file}", err=True)
+            sys.exit(2)
+        try:
+            new_value = file_path.read_text().rstrip("\n")
+        except OSError as exc:
+            click.echo(f"Error: cannot read {value_from_file}: {exc}", err=True)
+            sys.exit(2)
+    else:
+        if _stdin_is_tty():
+            click.echo(
+                "refusing to read a secret from a TTY. "
+                "Pipe the new value on stdin, or use --value-from-file <path>.",
+                err=True,
+            )
+            sys.exit(2)
+        new_value = sys.stdin.read().rstrip("\n")
+
+    # 2. Resolve the vault config and the target backend.
+    config_path = find_config(Path.cwd())
+    if config_path is None:
+        raise click.ClickException("no .himitsubako.yaml found (run 'hmb init' first)")
+
+    config = load_config(config_path)
+    router = BackendRouter(config, project_dir=config_path.parent)
+    try:
+        target = router.resolve(credential)
+    except BackendError as exc:
+        click.echo(f"Error: {exc.detail}", err=True)
+        sys.exit(1)
+
+    backend_name = target.backend_name
+
+    # 3. Perform the rotation. On failure, write a failure audit line
+    #    (best-effort) and exit 1 without a warning if the audit write
+    #    itself fails — the rotation failure is the primary signal.
+    try:
+        target.set(credential, new_value)
+    except BackendError as exc:
+        with contextlib.suppress(OSError):
+            write_audit_entry(
+                command="rotate",
+                credential=credential,
+                backend=backend_name,
+                outcome="failure",
+                vault_path=config_path,
+                error=str(exc),
+            )
+        click.echo(f"Error: {exc.detail}", err=True)
+        sys.exit(1)
+
+    # 4. Rotation succeeded. Write the success audit line. If that fails,
+    #    warn on stderr but do NOT roll back — a successful rotation with
+    #    a missing audit line is less bad than an unwound rotation.
+    try:
+        write_audit_entry(
+            command="rotate",
+            credential=credential,
+            backend=backend_name,
+            outcome="success",
+            vault_path=config_path,
+        )
+    except OSError as exc:
+        click.echo(
+            f"WARN: rotation succeeded but audit log write failed: {exc}",
+            err=True,
+        )
+
+    click.echo(f"rotated {credential}")
