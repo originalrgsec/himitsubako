@@ -76,7 +76,7 @@ hmb = "himitsubako.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/originalrgsec/himitsubako"
-Documentation = "https://github.com/originalrgsec/himitsubako#readme"
+Documentation = "https://originalrgsec.github.io/himitsubako/"
 Issues = "https://github.com/originalrgsec/himitsubako/issues"
 Repository = "https://github.com/originalrgsec/himitsubako"
 Changelog = "https://github.com/originalrgsec/himitsubako/blob/main/CHANGELOG.md"
