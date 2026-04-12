@@ -1,0 +1,109 @@
+/* ==========================================================================
+   originalrgsec Brand Theme — GitHub Pages Documentation
+   Ported from open-workspace-builder for cross-project visual consistency.
+   Dark charcoal + muted navy backgrounds, gold primary accent with glow,
+   royal blue secondary accent with glow. Sans-serif typography.
+   ========================================================================== */
+
+/* ---- Color variables ---- */
+:root {
+  /* originalrgsec brand palette */
+  --rg-gold: #D4A017;
+  --rg-gold-light: #E8B830;
+  --rg-gold-dark: #A67C00;
+  --rg-gold-glow: rgba(212, 160, 23, 0.45);
+  --rg-royal-blue: #3A5BA0;
+  --rg-royal-blue-light: #4A6FBE;
+  --rg-royal-blue-glow: rgba(58, 91, 160, 0.45);
+  --rg-navy: #1B2A4A;
+  --rg-charcoal: #12121E;
+  --rg-dark: #0A0A14;
+  --rg-text-light: #F0F0F0;
+  --rg-text-muted: #B0B0C0;
+
+  /* Material overrides */
+  --md-primary-fg-color: #D4A017;
+  --md-primary-fg-color--light: #E8B830;
+  --md-primary-fg-color--dark: #A67C00;
+  --md-accent-fg-color: #3A5BA0;
+  --md-accent-fg-color--transparent: rgba(58, 91, 160, 0.1);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0A0A14;
+  --md-default-bg-color--light: #12121E;
+  --md-default-bg-color--lighter: #1B2A4A;
+  --md-primary-fg-color: #D4A017;
+  --md-primary-fg-color--light: #E8B830;
+  --md-primary-fg-color--dark: #A67C00;
+  --md-accent-fg-color: #3A5BA0;
+  --md-typeset-color: #F0F0F0;
+  --md-typeset-a-color: #E8B830;
+  --md-code-bg-color: #12121E;
+}
+
+/* ---- Typography ---- */
+:root {
+  --md-text-font: "Arial", "Helvetica Neue", Helvetica, sans-serif;
+}
+
+/* ---- Header ---- */
+.md-header {
+  background: linear-gradient(135deg, #0A0A14 0%, #12121E 100%);
+  border-bottom: 1px solid rgba(212, 160, 23, 0.2);
+}
+
+.md-header__title {
+  font-weight: 600;
+}
+
+/* ---- Navigation tabs ---- */
+.md-tabs {
+  background: #0A0A14;
+  border-bottom: 1px solid rgba(212, 160, 23, 0.15);
+}
+
+/* ---- Gold glow effect for interactive elements ---- */
+a:hover,
+.md-nav__link:hover {
+  text-shadow: 0 0 8px var(--rg-gold-glow);
+}
+
+/* Sidebar active link glow */
+.md-nav__link--active {
+  color: var(--rg-gold-light) !important;
+  text-shadow: 0 0 6px var(--rg-gold-glow);
+}
+
+/* ---- Footer ---- */
+.md-footer {
+  background: #07070E;
+  border-top: 1px solid rgba(212, 160, 23, 0.15);
+}
+
+/* ---- Admonition customization ---- */
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: var(--rg-gold);
+}
+
+.md-typeset .tip > .admonition-title,
+.md-typeset .tip > summary {
+  background-color: rgba(212, 160, 23, 0.1);
+}
+
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-color: var(--rg-royal-blue);
+}
+
+.md-typeset .note > .admonition-title,
+.md-typeset .note > summary {
+  background-color: rgba(58, 91, 160, 0.1);
+}
+
+/* ---- Light mode overrides ---- */
+[data-md-color-scheme="default"] {
+  --md-typeset-color: #12121E;
+  --md-typeset-a-color: #A67C00;
+}
