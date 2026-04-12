@@ -81,6 +81,8 @@ nav:
   - Integrations:
       - pydantic-settings: integrations/pydantic-settings.md
       - direnv: integrations/direnv.md
-  - Security: security.md
+  - Security:
+      - Overview: security.md
+      - Release attestations: security/attestations.md
   - Why not ...?: why-not.md
   - Changelog: changelog.md

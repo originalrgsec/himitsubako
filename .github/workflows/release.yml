@@ -189,9 +189,15 @@ jobs:
       name: pypi-release
       url: https://pypi.org/project/himitsubako/
     permissions:
-      # Needed for Trusted Publishers OIDC.
+      # id-token: write is required by BOTH Trusted Publishers (for the
+      # short-lived PyPI OIDC token) AND Sigstore attestations (for the
+      # keyless signing identity). Same permission, two consumers.
       id-token: write
       contents: read
+      # attestations: write is required by `pypa/gh-action-pypi-publish`
+      # when `attestations: true` is set; it scopes the minting of
+      # PEP 740 attestation bundles to this job only.
+      attestations: write
     steps:
       - name: Download dist artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
@@ -201,10 +207,32 @@ jobs:
 
       - name: Publish to PyPI via Trusted Publishers
         # Tag-pinned (NOT SHA-pinned) — see the "Docker container action
-        # exception" note in the header. v1.13.0 release is 2025-09-04.
+        # exception" note in the header. v1.13.0 release is 2025-09-04
+        # and supports PEP 740 attestations (feature added in v1.12.0).
+        #
+        # PEP 740 / Sigstore provenance attestations
+        # ------------------------------------------
+        # `attestations: true` makes the action mint a Sigstore
+        # attestation bundle for each wheel + sdist and attach it to
+        # the PyPI release. The signing identity is bound to the
+        # GitHub Actions workflow run via short-lived OIDC credentials;
+        # the public binding is:
+        #
+        #   https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml
+        #
+        # Users can verify a downloaded release with:
+        #   python -m sigstore verify identity \
+        #     --cert-identity https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml@refs/tags/<TAG> \
+        #     --cert-oidc-issuer https://token.actions.githubusercontent.com \
+        #     himitsubako-<VERSION>-py3-none-any.whl
+        #
+        # See docs/security/attestations.md for the full verification
+        # guide. T-034 and T-038 in the threat model track the residual
+        # risks (binding misconfiguration and downstream non-verification).
         uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           packages-dir: dist/
           # No `password:` — OIDC Trusted Publisher binding on PyPI
           # provides the short-lived token automatically.
+          attestations: true
           verbose: true

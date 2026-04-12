@@ -5,6 +5,104 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-11
+
+Sprint 4 closes the loops still open after the v0.3.1 PyPI publish:
+a credential rotation command with an append-only audit trail, a live
+published docs site at [originalrgsec.github.io/himitsubako](https://originalrgsec.github.io/himitsubako/),
+and PEP 740 / Sigstore provenance attestations on every release artifact.
+Three stories, seven points, no new runtime dependencies.
+
+### Added
+
+- **`hmb rotate <credential>` — credential value rotation with audit log
+  (HMB-S021).** A new CLI command that rotates a single credential's
+  value through `BackendRouter` and appends a JSON Lines entry to
+  `~/.himitsubako/audit.log`. Distinct from `hmb rotate-key`, which
+  rotates the age master key; the help text of both commands calls out
+  the distinction in the first line. Reads the new value from stdin
+  (pipe) or `--value-from-file`, and refuses a `--value` argv flag
+  entirely — secrets on the command line are not supported by design.
+  The audit log is created with mode 0600 inside a 0700 parent
+  directory, uses `O_APPEND` atomic single-writes so concurrent
+  rotations from separate processes interleave cleanly, and passes
+  every `error` field through the shared token redaction helper
+  (`_redaction.redact_tokens`, lifted out of the Bitwarden backend in
+  the same commit) before writing to disk. On success the command
+  prints `rotated <credential>`; on audit-write failure after a
+  successful rotation it emits a stderr warning and still exits 0,
+  because rolling back a successful rotation to preserve a log line
+  is the wrong trade-off.
+- **Live documentation site (HMB-S022).** The mkdocs-material site
+  built in v0.3.0 is now deployed to
+  [originalrgsec.github.io/himitsubako](https://originalrgsec.github.io/himitsubako/)
+  on every push to `main` via a new SHA-pinned workflow at
+  `.github/workflows/docs.yml`. Docs track the tip of `main`, not the
+  last release tag, so doc-only fixes reach users without waiting for
+  the next version bump. The `Documentation` URL in `pyproject.toml`
+  `[project.urls]` has been flipped from the GitHub README anchor to
+  the live Pages URL, so PyPI metadata for v0.4.0 links users to the
+  real site. README carries a new `docs` badge alongside the existing
+  `ci` and `PyPI` ones.
+- **PEP 740 / Sigstore provenance attestations on every PyPI release
+  (HMB-S023).** `attestations: true` is now set on the
+  `pypa/gh-action-pypi-publish` step in `release.yml`, and the publish
+  job carries an additional `attestations: write` permission scoped
+  to itself. Every wheel and sdist on
+  [pypi.org/project/himitsubako/](https://pypi.org/project/himitsubako/)
+  from v0.4.0 onward ships with an attached Sigstore attestation
+  bundle bound to the exact GitHub Actions release run that produced
+  it. Downstream users can verify a release with either
+  `gh attestation verify` or `python -m sigstore verify identity`;
+  the full guide lives in the docs at
+  [`security/attestations.md`](https://originalrgsec.github.io/himitsubako/security/attestations/).
+  The threat model adds T-034 (attestation binding misconfiguration),
+  T-038 (downstream non-verification), and mitigations M-027 and M-031.
+
+### Changed
+
+- **`src/himitsubako/backends/bitwarden.py` imports `redact_tokens`
+  from `src/himitsubako/_redaction.py`.** The 40+-char base64 regex
+  that redacts BW_SESSION tokens from Bitwarden `bw` stderr (HMB-S009
+  review) has been lifted into a shared helper module so the audit
+  log can reuse it without creating a dependency cycle. Behavior is
+  unchanged; regression-guarded by the existing Bitwarden redaction
+  tests.
+
+### Security
+
+- **T-034, T-035, T-036, T-037, T-038 added to the threat model.**
+  v0.4.0 introduces three new attack surfaces (`hmb rotate` audit log,
+  GitHub Pages deployment, Sigstore attestations) and each is reviewed
+  in a new "v0.4.0 Release Polish Surface Review" section of
+  `threat-model.md`. Highest residual risks are T-038 (downstream
+  non-verification, accepted with documentation mitigation) and T-036
+  (audit log tampering, accepted as a local log whose threat model is
+  "evidence for me, not against me"). T-035 is mitigated to Low by
+  job-scoped deploy permissions.
+
+### Operator actions required before tagging v0.4.0
+
+1. **GitHub Pages enablement.** Flip Settings → Pages → Source to
+   "GitHub Actions" on `github.com/originalrgsec/himitsubako`. The
+   workflow cannot enable this itself; without the flip, the first
+   `docs.yml` run will fail at `actions/deploy-pages` with a missing
+   Pages site error.
+2. **TestPyPI dry run.** Tag `v0.4.0-rc.1` and push it to exercise
+   the full release + attestation flow against TestPyPI before the
+   real `v0.4.0` tag. Sprint 3's v0.3.0 → v0.3.1 mishap is the
+   precedent — "always dry-run irreversible actions." Verify on
+   TestPyPI that the attestation identity matches the expected
+   `https://github.com/originalrgsec/himitsubako/.github/workflows/release.yml`
+   binding before tagging the production release.
+
+### Test count and coverage
+
+- Tests: 190 → 210 (+20 covering `audit.py` and `rotate_credential`)
+- Coverage: 85.80% → 86.13%
+- All four quality gates green on every commit: `ruff check`,
+  `ruff format --check`, `mypy`, `pytest`.
+
 ## [0.3.1] - 2026-04-11
 
 First public PyPI release. The v0.3.0 tag exists in git history but
