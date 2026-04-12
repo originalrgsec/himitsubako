@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-11
+
+Sprint 6 clears the remaining backlog with docs polish and a CI safety
+net. Three stories, five points, no library code changes. The backlog
+is empty after this sprint; the project enters maintenance mode.
+
+### Added
+
+- **TestPyPI dry-run workflow (HMB-S027).** New
+  `.github/workflows/testpypi.yml` triggered on pre-release tags
+  (`v*-rc*`). Mirrors the production release workflow but publishes to
+  TestPyPI, giving every release a low-risk rehearsal before the real
+  PyPI publish. Same SHA-pinned actions, Trusted Publishers OIDC, PEP
+  740 attestations, and required-reviewer gate. Tag patterns are
+  mutually exclusive with `release.yml`. Motivated by the v0.3.0 →
+  v0.3.1 incident where a Docker image pull failure was only caught on
+  the production tag.
+
+### Changed
+
+- **Attestation docs use version placeholders (HMB-S028).** All
+  hardcoded `v0.4.0` references in `docs/security/attestations.md`
+  verification commands replaced with `<VERSION>` placeholders. An
+  admonition callout explains the substitution convention and the `v`
+  prefix difference between git refs and pip arguments.
+- **Docs site aligned with OWB brand identity (HMB-S029).** Palette
+  switched from stock indigo to the originalrgsec gold (#D4A017) /
+  royal blue (#3A5BA0) scheme with dark-first slate mode. System
+  sans-serif font stack (`font: false`), profile-avatar logo and
+  favicon, gold glow effects on navigation, and custom admonition
+  styling. Brand CSS ported from open-workspace-builder; layout classes
+  (hero, feature cards, buttons) excluded.
+
 ## [0.5.0] - 2026-04-11
 
 Sprint 5 expands distribution reach beyond PyPI and closes the macOS CI gap.
