@@ -5,11 +5,17 @@ from __future__ import annotations
 from pathlib import Path  # noqa: TC003 — used at runtime in load_config/find_config
 
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from himitsubako.errors import ConfigError
 
-_VALID_BACKENDS = frozenset({"sops", "env", "keychain", "bitwarden-cli"})
+# Simple storage backends that can also serve as `storage_backend` for composite
+# credentials (e.g. google-oauth). `google-oauth` is itself a composite and
+# cannot be used as its own storage.
+_STORAGE_BACKENDS = frozenset({"sops", "env", "keychain", "bitwarden-cli"})
+_VALID_BACKENDS = _STORAGE_BACKENDS | {"google-oauth"}
+
+_GOOGLE_OAUTH_REQUIRED_KEYS = frozenset({"client_id", "client_secret", "refresh_token"})
 
 _CONFIG_FILENAME = ".himitsubako.yaml"
 
@@ -64,11 +70,20 @@ class CredentialRoute(BaseModel):
     or a glob pattern (`fnmatch` syntax). Each entry must specify a
     `backend` field; routes inherit the project-level backend config
     sections (`sops:`, `keychain:`, etc.) for connection details.
+
+    When `backend` is `google-oauth` (HMB-S030), the route is a composite:
+    it groups three underlying secrets (client_id, client_secret, refresh_token)
+    into a single logical credential. The `storage_backend`, `scopes`, and
+    `keys` fields are required in that case and forbidden otherwise.
     """
 
     model_config = {"frozen": True, "extra": "forbid"}
 
     backend: str
+    # Composite-only fields, validated below.
+    storage_backend: str | None = None
+    scopes: list[str] | None = None
+    keys: dict[str, str] | None = None
 
     @field_validator("backend")
     @classmethod
@@ -79,6 +94,48 @@ class CredentialRoute(BaseModel):
                 f"Choose from: {', '.join(sorted(_VALID_BACKENDS))}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_composite_fields(self) -> CredentialRoute:
+        """Enforce that composite-only fields appear only with composite backends."""
+        composite_fields = {
+            "storage_backend": self.storage_backend,
+            "scopes": self.scopes,
+            "keys": self.keys,
+        }
+        present = [name for name, value in composite_fields.items() if value is not None]
+
+        if self.backend == "google-oauth":
+            # Require all three composite fields and specific keys.
+            missing = [name for name, value in composite_fields.items() if value is None]
+            if missing:
+                raise ValueError(
+                    f"google-oauth credential missing required fields: {', '.join(missing)}"
+                )
+            if self.storage_backend not in _STORAGE_BACKENDS:
+                raise ValueError(
+                    f"storage_backend '{self.storage_backend}' is not a valid storage "
+                    f"backend. Choose from: {', '.join(sorted(_STORAGE_BACKENDS))}"
+                )
+            if self.keys is None:  # pragma: no cover — guarded by missing check
+                raise ValueError("google-oauth credential requires keys mapping")
+            missing_keys = _GOOGLE_OAUTH_REQUIRED_KEYS - set(self.keys.keys())
+            if missing_keys:
+                raise ValueError(
+                    f"google-oauth credential keys missing: {', '.join(sorted(missing_keys))}"
+                )
+            extra_keys = set(self.keys.keys()) - _GOOGLE_OAUTH_REQUIRED_KEYS
+            if extra_keys:
+                raise ValueError(
+                    f"google-oauth credential keys has unexpected entries: "
+                    f"{', '.join(sorted(extra_keys))}"
+                )
+        elif present:
+            raise ValueError(
+                f"fields {present} are only valid when backend is 'google-oauth', "
+                f"not '{self.backend}'"
+            )
+        return self
 
 
 class HimitsubakoConfig(BaseModel):
