@@ -1,11 +1,14 @@
 """hmb rotate (credential value) and hmb rotate-key (age master key).
 
-Two distinct commands, deliberately kept in the same module so the
-distinction is visible at a glance:
+Three distinct commands/modes, deliberately kept in the same module so
+the distinction is visible at a glance:
 
 - `hmb rotate <credential>` (HMB-S021) rotates the VALUE of a single
   credential by routing through BackendRouter, then writes one JSON
   Lines entry to `~/.himitsubako/audit.log`.
+- `hmb rotate <google-oauth-credential>` (HMB-S032) runs an OAuth
+  device flow (default) or InstalledAppFlow (`--browser`), writes the
+  new refresh token back to the storage backend, and audits the method.
 - `hmb rotate-key` (HMB-S005) re-encrypts the secrets file under a new
   age master key using `sops updatekeys`.
 """
@@ -13,6 +16,7 @@ distinction is visible at a glance:
 from __future__ import annotations
 
 import contextlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -20,9 +24,12 @@ from pathlib import Path
 import click
 import yaml
 
+from himitsubako._redaction import redact_tokens
 from himitsubako.audit import write_audit_entry
+from himitsubako.backends.google_oauth import GoogleOAuthBackend
 from himitsubako.config import find_config, load_config
 from himitsubako.errors import BackendError
+from himitsubako.google_oauth_rotate import run_device_flow, run_installed_app_flow
 from himitsubako.router import BackendRouter
 
 
@@ -130,38 +137,28 @@ def rotate_key(new_key: str, dry_run: bool) -> None:
     type=click.Path(),
     help="Read the new value from a file instead of stdin.",
 )
-def rotate_credential(credential: str, value_from_file: str | None) -> None:
+@click.option(
+    "--browser",
+    is_flag=True,
+    default=False,
+    help="(google-oauth only) Use InstalledAppFlow with a local browser instead of device flow.",
+)
+def rotate_credential(credential: str, value_from_file: str | None, browser: bool) -> None:
     """Rotate a credential's VALUE and append an audit log entry.
 
     Different from `hmb rotate-key`: this rotates one credential's value,
-    while `hmb rotate-key` rotates the age master key. Reads the new
-    value from stdin (pipe) by default; use --value-from-file to read
-    from a file. Argv-based secret entry via --value is deliberately
-    not supported.
-    """
-    # 1. Read the new value. TTY stdin is refused (secrets must not be
-    #    typed interactively into the rotate flow — use hmb set for that).
-    if value_from_file is not None:
-        file_path = Path(value_from_file)
-        if not file_path.exists():
-            click.echo(f"Error: file not found: {value_from_file}", err=True)
-            sys.exit(2)
-        try:
-            new_value = file_path.read_text().rstrip("\n")
-        except OSError as exc:
-            click.echo(f"Error: cannot read {value_from_file}: {exc}", err=True)
-            sys.exit(2)
-    else:
-        if _stdin_is_tty():
-            click.echo(
-                "refusing to read a secret from a TTY. "
-                "Pipe the new value on stdin, or use --value-from-file <path>.",
-                err=True,
-            )
-            sys.exit(2)
-        new_value = sys.stdin.read().rstrip("\n")
+    while `hmb rotate-key` re-encrypts the secrets file under a new age
+    master key.
 
-    # 2. Resolve the vault config and the target backend.
+    For regular credentials, reads the new value from stdin (or
+    --value-from-file) and writes it through the resolved backend.
+
+    For google-oauth credentials (HMB-S030), runs an OAuth authorization
+    flow to obtain a fresh refresh token and writes it back to the
+    configured storage backend. Defaults to device flow (works over
+    SSH); use --browser for InstalledAppFlow on a desktop.
+    """
+    # 1. Resolve the vault config and the target backend up front.
     config_path = find_config(Path.cwd())
     if config_path is None:
         raise click.ClickException("no .himitsubako.yaml found (run 'hmb init' first)")
@@ -175,6 +172,27 @@ def rotate_credential(credential: str, value_from_file: str | None) -> None:
         sys.exit(1)
 
     backend_name = target.backend_name
+
+    # 2. Branch on credential type. google-oauth gets the OAuth flow;
+    #    everything else reads the new value from stdin/file.
+    if isinstance(target, GoogleOAuthBackend):
+        _rotate_google_oauth(
+            credential=credential,
+            target=target,
+            use_browser=browser,
+            config_path=config_path,
+            backend_name=backend_name,
+        )
+        return
+
+    if browser:
+        click.echo(
+            "Error: --browser is only valid for google-oauth credentials.",
+            err=True,
+        )
+        sys.exit(2)
+
+    new_value = _read_rotation_value(value_from_file)
 
     # 3. Perform the rotation. On failure, write a failure audit line
     #    (best-effort) and exit 1 without a warning if the audit write
@@ -212,3 +230,163 @@ def rotate_credential(credential: str, value_from_file: str | None) -> None:
         )
 
     click.echo(f"rotated {credential}")
+
+
+def _read_rotation_value(value_from_file: str | None) -> str:
+    """Read the new rotation value from file or stdin. TTY stdin is refused."""
+    if value_from_file is not None:
+        file_path = Path(value_from_file)
+        if not file_path.exists():
+            click.echo(f"Error: file not found: {value_from_file}", err=True)
+            sys.exit(2)
+        try:
+            return file_path.read_text().rstrip("\n")
+        except OSError as exc:
+            click.echo(f"Error: cannot read {value_from_file}: {exc}", err=True)
+            sys.exit(2)
+
+    if _stdin_is_tty():
+        click.echo(
+            "refusing to read a secret from a TTY. "
+            "Pipe the new value on stdin, or use --value-from-file <path>.",
+            err=True,
+        )
+        sys.exit(2)
+    return sys.stdin.read().rstrip("\n")
+
+
+def _rotate_google_oauth(
+    credential: str,
+    target: GoogleOAuthBackend,
+    use_browser: bool,
+    config_path: Path,
+    backend_name: str,
+) -> None:
+    """Run OAuth rotation for a google-oauth credential."""
+    method = "browser" if use_browser else "device"
+
+    # Read current client_id and client_secret. A partial credential (missing
+    # or corrupt refresh_token) is a valid starting point for rotation as long
+    # as the client credentials are present, so fall back to reading each
+    # field individually if the composite get() raises.
+    client_id, client_secret = _read_google_client_credentials(target, credential)
+
+    if not client_id or not client_secret:
+        click.echo(
+            "Error: rotation requires existing client_id and client_secret. "
+            f"Run `hmb set {credential}` to populate them first.",
+            err=True,
+        )
+        sys.exit(1)
+
+    # Run the OAuth flow.
+    try:
+        if use_browser:
+            result = run_installed_app_flow(
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=target.scopes,
+            )
+        else:
+            result = run_device_flow(
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=target.scopes,
+            )
+    except BackendError as exc:
+        with contextlib.suppress(OSError):
+            write_audit_entry(
+                command="rotate",
+                credential=credential,
+                backend=backend_name,
+                outcome="failure",
+                vault_path=config_path,
+                error=redact_tokens(f"{method}:{exc.detail}"),
+            )
+        click.echo(f"Error: {exc.detail}", err=True)
+        sys.exit(1)
+
+    # Build the new JSON blob: unchanged client_id/client_secret + new refresh_token.
+    new_blob = json.dumps(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": result.refresh_token,
+        }
+    )
+
+    try:
+        target.set(credential, new_blob)
+    except BackendError as exc:
+        # Write failure happens AFTER we have a new refresh token from Google
+        # but could not store it. Tell the user to retry; Google has not
+        # revoked the old token on their side.
+        with contextlib.suppress(OSError):
+            write_audit_entry(
+                command="rotate",
+                credential=credential,
+                backend=backend_name,
+                outcome="failure",
+                vault_path=config_path,
+                error=redact_tokens(f"{method}:storage_write_failed:{exc.detail}"),
+            )
+        click.echo(
+            f"Error: OAuth succeeded but storage write failed: {exc.detail}. "
+            "The old refresh token is still valid; re-run `hmb rotate` to retry.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        write_audit_entry(
+            command="rotate",
+            credential=credential,
+            backend=backend_name,
+            outcome="success",
+            vault_path=config_path,
+            method=method,
+        )
+    except OSError as exc:
+        click.echo(
+            f"WARN: rotation succeeded but audit log write failed: {exc}",
+            err=True,
+        )
+
+    click.echo(f"rotated {credential} ({method} flow)")
+
+
+def _read_google_client_credentials(
+    target: GoogleOAuthBackend, credential: str
+) -> tuple[str | None, str | None]:
+    """Return (client_id, client_secret) for a google-oauth credential.
+
+    Prefers the composite get() path, which raises if any field is missing.
+    Falls back to per-field reads so rotation works even when the stored
+    refresh_token is missing or corrupt — the common case for rotation.
+    Returns (None, None) for any field that cannot be read.
+    """
+    try:
+        current = target.get(credential)
+    except BackendError:
+        current = None
+
+    if current is not None:
+        parsed = json.loads(current)
+        client_id = parsed.get("client_id")
+        client_secret = parsed.get("client_secret")
+        return (
+            client_id if isinstance(client_id, str) else None,
+            client_secret if isinstance(client_secret, str) else None,
+        )
+
+    # Composite read failed (likely because refresh_token is absent). Read
+    # each required field individually so rotation can still recover.
+    try:
+        client_id = target.get_field("client_id")
+    except BackendError:
+        client_id = None
+    try:
+        client_secret = target.get_field("client_secret")
+    except BackendError:
+        client_secret = None
+    return client_id, client_secret

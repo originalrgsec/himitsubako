@@ -80,6 +80,23 @@ class GoogleOAuthBackend:
     def scopes(self) -> list[str]:
         return list(self._scopes)
 
+    def get_field(self, field: str) -> str | None:
+        """Read a single constituent secret by canonical field name.
+
+        Unlike `get()`, this does not require all three fields to be
+        present; a missing field returns None. Used by the rotation flow
+        (HMB-S032) to recover client_id and client_secret when the
+        stored refresh_token is missing or corrupt.
+
+        Raises BackendError if `field` is not one of the canonical names.
+        """
+        if field not in self._keys:
+            raise BackendError(
+                "google-oauth",
+                f"unknown field '{field}'; expected one of {list(REQUIRED_FIELDS)}",
+            )
+        return self._storage.get(self._keys[field])
+
     def get(self, key: str) -> str | None:
         """Return the three secrets as a JSON blob, or None if key does not match."""
         if key != self._credential_name:
