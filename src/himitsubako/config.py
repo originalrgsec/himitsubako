@@ -15,12 +15,19 @@ _CONFIG_FILENAME = ".himitsubako.yaml"
 
 
 class SopsConfig(BaseModel):
-    """SOPS backend configuration."""
+    """SOPS backend configuration.
+
+    `age_identity` and `config_file` are both optional. When unset, SOPS
+    performs its own resolution (default key path, cwd-walk for `.sops.yaml`).
+    When set, they are propagated to the sops subprocess as
+    `SOPS_AGE_KEY_FILE` env var and `--config` flag respectively.
+    """
 
     model_config = {"frozen": True}
 
     secrets_file: str = ".secrets.enc.yaml"
-    age_identity: str = "~/.config/sops/age/keys.txt"
+    age_identity: str | None = None
+    config_file: str | None = None
     bin: str | None = None
 
 

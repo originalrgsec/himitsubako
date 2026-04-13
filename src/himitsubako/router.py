@@ -111,6 +111,8 @@ class BackendRouter:
             return SopsBackend(
                 secrets_file=str(self._project_dir / sops_cfg.secrets_file),
                 sops_bin=sops_cfg.bin,
+                age_identity=sops_cfg.age_identity,
+                sops_config_file=sops_cfg.config_file,
             )
 
         if name == "env":
