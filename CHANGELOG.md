@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-14
+
+Sprint 7 exits maintenance mode with Google OAuth support and a P1 SOPS
+bug fix. Three stories, eight points. New `google-oauth` composite
+backend type, `hmb rotate` plugin for OAuth refresh tokens with device
+flow and browser flow, and SOPS subprocess env propagation for non-default
+key paths.
+
+### Added
+
+- **Google OAuth credential backend (HMB-S030).** New `google-oauth`
+  credential type in `.himitsubako.yaml` groups the three Google OAuth
+  secrets (client_id, client_secret, refresh_token) as one logical
+  credential. Delegates storage to any existing backend (`sops`, `env`,
+  `keychain`, `bitwarden-cli`). Python API exposes
+  `himitsubako.get_google_credentials(key)` which returns a live
+  `google.oauth2.credentials.Credentials` object ready for
+  `google-api-python-client` consumers. CLI: `hmb get <cred>` emits JSON
+  with all three fields, `hmb set <cred>` prompts for each field
+  separately. Individual constituent keys remain accessible via the
+  normal `hmb get <key>` / Python `get(key)` paths. Optional
+  dependencies `google-auth>=2.49.0,<3.0,!=2.49.2` and
+  `google-auth-oauthlib>=1.3.1,<2.0` under the new `[google]` extras.
+- **`hmb rotate` Google OAuth plugin (HMB-S032).** When the resolved
+  target is a google-oauth credential, `hmb rotate` runs an OAuth
+  authorization flow to obtain a fresh refresh token and writes it back
+  to the configured storage backend automatically. Two modes: device
+  flow (default) prints a verification URL and user code that works over
+  SSH, in containers, and any environment without a browser; `--browser`
+  flag uses `InstalledAppFlow` with a localhost callback for desktop use.
+  New audit log `method` field records which flow was used. Device flow
+  errors include a remediation hint pointing at `--browser` when the
+  GCP OAuth client is not configured for device flow.
+
+### Fixed
+
+- **SopsBackend now propagates `age_identity` and `config_file`
+  (HMB-S031).** `.himitsubako.yaml`'s `sops.age_identity` is now passed
+  to the sops subprocess as `SOPS_AGE_KEY_FILE` env var, and a new
+  `sops.config_file` option is passed as `--config`. Without this,
+  consumers with non-default key paths or `.sops.yaml` locations hit
+  "identity did not match any of the recipients" errors even with a
+  correctly populated config. The `age_identity` field is now `str | None`
+  with a default of `None` (SOPS uses its own default resolution). Tilde
+  expansion applied uniformly to `secrets_file`, `age_identity`, and
+  `config_file`. Unblocks home-ops HOP-S106 secrets migration.
+
+### Changed
+
+- **`write_audit_entry` gains an optional `method` field.** JSONL schema
+  evolution is backward-compatible; legacy entries omit the field. Used
+  today by `hmb rotate` to record `method: device` or `method: browser`
+  on google-oauth rotations.
+
 ## [0.6.0] - 2026-04-11
 
 Sprint 6 clears the remaining backlog with docs polish and a CI safety
