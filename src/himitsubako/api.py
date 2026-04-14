@@ -6,6 +6,12 @@ Usage:
     value = get("MY_KEY")
     set_secret("MY_KEY", "new_value")
     keys = list_secrets()
+
+For Google OAuth credentials (HMB-S030):
+
+    from himitsubako import get_google_credentials
+    creds = get_google_credentials("google_drive")
+    # creds is a google.oauth2.credentials.Credentials object
 """
 
 from __future__ import annotations
@@ -15,9 +21,12 @@ from typing import TYPE_CHECKING
 
 from himitsubako.backends.sops import SopsBackend
 from himitsubako.config import HimitsubakoConfig, find_config, load_config
+from himitsubako.errors import BackendError
 from himitsubako.router import BackendRouter
 
 if TYPE_CHECKING:
+    from google.oauth2.credentials import Credentials
+
     from himitsubako.backends.protocol import SecretBackend
 
 
@@ -78,3 +87,42 @@ def list_secrets() -> list[str]:
     """List all secret key names from the resolved backend."""
     backend = _resolve_backend()
     return backend.list_keys()
+
+
+def get_google_credentials(key: str) -> Credentials:
+    """Return a live `google.oauth2.credentials.Credentials` for a google-oauth credential.
+
+    The credential must be declared in `.himitsubako.yaml` with
+    `backend: google-oauth`. The returned object carries client_id,
+    client_secret, refresh_token, and scopes; the access token is None
+    on the returned object and will be refreshed automatically by
+    google-api-python-client on first use.
+
+    Requires the `google-auth` package. Install via
+    `pip install himitsubako[google]`.
+
+    Raises:
+        BackendError: if the key is not declared as a google-oauth
+            credential, or any constituent secret is missing.
+    """
+    from himitsubako.backends.google_oauth import GoogleOAuthBackend
+
+    backend = _resolve_backend()
+    if not isinstance(backend, BackendRouter):
+        raise BackendError(
+            "google-oauth",
+            f"'{key}' is not a google-oauth credential (no .himitsubako.yaml config found)",
+        )
+    if backend.credential_type(key) != "google-oauth":
+        raise BackendError(
+            "google-oauth",
+            f"'{key}' is not a google-oauth credential in .himitsubako.yaml",
+        )
+
+    resolved = backend.resolve(key)
+    if not isinstance(resolved, GoogleOAuthBackend):  # pragma: no cover — router guarantees
+        raise BackendError(
+            "google-oauth",
+            f"internal error: router returned {type(resolved).__name__} for google-oauth key",
+        )
+    return resolved.get_credentials()

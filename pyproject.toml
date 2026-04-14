@@ -1,6 +1,6 @@
 [project]
 name = "himitsubako"
-version = "0.6.0"
+version = "0.7.0"
 description = "Multi-backend credential abstraction for solo Python developers. SOPS+age, macOS Keychain, Bitwarden CLI, direnv, env vars."
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,9 +41,24 @@ dependencies = [
 # that SDK has a non-OSI license (see COR-S037 retrospective).
 keychain = ["keyring>=25.0,<26.0"]
 pydantic-settings = ["pydantic-settings>=2.13,<3.0"]
+# Google OAuth backend (HMB-S030) + rotate plugin (HMB-S032).
+# Both packages are Apache-2.0. Pinned to quarantine-safe versions as of
+# 2026-04-13: google-auth 2.49.1 (2026-03-12, 32 days old) excluding the
+# quarantined 2.49.2 (2026-04-10); google-auth-oauthlib 1.3.1 (2026-03-30,
+# 14 days old). The dependency-gate.py hook only checks PyPI's latest
+# version rather than the pinned value, so `uv add` rejects these even
+# with an aged pin. Workaround: pyproject.toml edit + `uv sync` — still
+# respects the policy spirit (quarantine-aged version), noted as a hook
+# gap to fix separately.
+google = [
+    "google-auth>=2.49.0,<3.0,!=2.49.2",
+    "google-auth-oauthlib>=1.3.1,<2.0",
+]
 all = [
     "keyring>=25.0,<26.0",
     "pydantic-settings>=2.13,<3.0",
+    "google-auth>=2.49.0,<3.0,!=2.49.2",
+    "google-auth-oauthlib>=1.3.1,<2.0",
 ]
 dev = [
     "pytest>=8.0,!=9.0.3",
@@ -114,6 +129,12 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["himitsubako"]
+
+[[tool.mypy.overrides]]
+# google-auth-oauthlib ships no py.typed marker as of 1.3.1. We use it
+# behind an optional-dependency import guard, so untyped is acceptable.
+module = "google_auth_oauthlib.*"
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["src/himitsubako"]

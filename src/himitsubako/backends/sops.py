@@ -24,9 +24,22 @@ class SopsBackend:
     Only values are encrypted; keys remain plaintext for readable git diffs.
     """
 
-    def __init__(self, secrets_file: str, sops_bin: str | None = None) -> None:
-        self._secrets_file = secrets_file
+    def __init__(
+        self,
+        secrets_file: str,
+        sops_bin: str | None = None,
+        age_identity: str | None = None,
+        sops_config_file: str | None = None,
+    ) -> None:
+        # Expand `~` eagerly and uniformly across all path inputs so callers see
+        # resolved paths when they inspect the backend, and so we don't re-expand
+        # on every subprocess call. Applies to secrets_file too: a user writing
+        # `secrets_file: ~/vault/secrets.enc.yaml` in .himitsubako.yaml gets the
+        # expected path rather than a literal `~`.
+        self._secrets_file = os.path.expanduser(secrets_file)
         self._sops_bin_arg = sops_bin
+        self._age_identity = os.path.expanduser(age_identity) if age_identity else None
+        self._sops_config_file = os.path.expanduser(sops_config_file) if sops_config_file else None
 
     def _resolve_sops_bin(self) -> str:
         """Resolve the sops binary path: env var > constructor arg > 'sops' on PATH."""
@@ -36,6 +49,30 @@ class SopsBackend:
         if self._sops_bin_arg:
             return self._sops_bin_arg
         return "sops"
+
+    def _subprocess_env(self) -> dict[str, str] | None:
+        """Build the subprocess env dict, injecting SOPS_AGE_KEY_FILE if configured.
+
+        Returns None when no overrides are needed so the subprocess inherits
+        the parent environment directly (identical to pre-S031 behavior).
+        """
+        if self._age_identity is None:
+            return None
+        env = dict(os.environ)
+        env["SOPS_AGE_KEY_FILE"] = self._age_identity
+        return env
+
+    def _config_args(self) -> list[str]:
+        """Return the `--config <path>` argv fragment, or [] if not configured.
+
+        Placed immediately after the sops binary name and before the operation
+        verb (`--decrypt` / `--encrypt`) in argv. SOPS accepts flags in any
+        order; keeping global flags first makes future argv extensions easier
+        to reason about.
+        """
+        if self._sops_config_file is None:
+            return []
+        return ["--config", self._sops_config_file]
 
     @property
     def backend_name(self) -> str:
@@ -71,13 +108,15 @@ class SopsBackend:
     def _decrypt(self) -> dict[str, str]:
         """Decrypt the secrets file and return its contents as a dict."""
         sops_bin = self._resolve_sops_bin()
+        argv = [sops_bin, *self._config_args(), "--decrypt", self._secrets_file]
         try:
             result = subprocess.run(
-                [sops_bin, "--decrypt", self._secrets_file],
+                argv,
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=_SOPS_TIMEOUT_SECONDS,
+                env=self._subprocess_env(),
             )
         except FileNotFoundError as exc:
             raise BackendError(
@@ -140,6 +179,7 @@ class SopsBackend:
             result = subprocess.run(
                 [
                     sops_bin,
+                    *self._config_args(),
                     "--encrypt",
                     "--filename-override",
                     str(secrets_path),
@@ -150,6 +190,7 @@ class SopsBackend:
                 text=True,
                 check=False,
                 timeout=_SOPS_TIMEOUT_SECONDS,
+                env=self._subprocess_env(),
             )
         except FileNotFoundError as exc:
             tmp_path.unlink(missing_ok=True)

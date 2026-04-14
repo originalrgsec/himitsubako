@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,9 @@ from himitsubako.router import BackendRouter
 
 if TYPE_CHECKING:
     from himitsubako.backends.protocol import SecretBackend
+
+
+from himitsubako.backends.google_oauth import REQUIRED_FIELDS as _GOOGLE_OAUTH_FIELDS
 
 
 def _resolve_backend() -> SecretBackend:
@@ -73,13 +77,33 @@ def get_secret(key: str, reveal: bool) -> None:
 @click.argument("key")
 @click.option("--value", default=None, help="Secret value (will prompt if omitted).")
 def set_secret(key: str, value: str | None) -> None:
-    """Set a secret value for a key."""
-    if value is None:
+    """Set a secret value for a key.
+
+    For google-oauth credentials, prompts separately for client_id,
+    client_secret, and refresh_token (HMB-S030 AC-5). The `--value` flag
+    is ignored in that case because a flat string cannot represent the
+    three-field composite.
+    """
+    try:
+        backend = _resolve_backend()
+    except BackendError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    # Detect composite credentials (google-oauth) and fan out the prompts.
+    resolved = backend
+    if isinstance(backend, BackendRouter):
+        try:
+            resolved = backend.resolve(key)
+        except BackendError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    if resolved.backend_name == "google-oauth":
+        value = _prompt_google_oauth_value()
+    elif value is None:
         value = click.prompt("Value", hide_input=True)
 
     try:
-        backend = _resolve_backend()
-        backend.set(key, value)
+        resolved.set(key, value)
     except BackendError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -88,6 +112,14 @@ def set_secret(key: str, value: str | None) -> None:
     # Best-effort: ensure .envrc managed block exists when the resolved
     # default backend is sops. Failures here never break the set operation.
     _maybe_refresh_envrc()
+
+
+def _prompt_google_oauth_value() -> str:
+    """Prompt separately for the three google-oauth fields and return a JSON blob."""
+    values: dict[str, str] = {}
+    for field in _GOOGLE_OAUTH_FIELDS:
+        values[field] = click.prompt(field, hide_input=True)
+    return json.dumps(values)
 
 
 def _maybe_refresh_envrc() -> None:

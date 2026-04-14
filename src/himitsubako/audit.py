@@ -70,12 +70,17 @@ def write_audit_entry(
     outcome: Outcome,
     vault_path: Path,
     error: str | None = None,
+    method: str | None = None,
     log_path: Path | None = None,
 ) -> None:
     """Append a single JSONL audit entry to the audit log.
 
     Arguments are keyword-only to prevent positional misordering that
     could put a credential name in the value slot or vice versa.
+
+    The optional `method` field records a per-backend rotation strategy
+    (e.g. "device" or "browser" for google-oauth, HMB-S032). Legacy
+    credentials omit it.
 
     Raises:
         OSError: If the directory or file cannot be created, or if the
@@ -95,6 +100,8 @@ def write_audit_entry(
     }
     if error is not None:
         entry["error"] = redact_tokens(error)
+    if method is not None:
+        entry["method"] = method
 
     # One JSON object per line. Sort keys for deterministic output —
     # makes diff-based testing and grep-based analysis saner.

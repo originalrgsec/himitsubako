@@ -408,3 +408,205 @@ class TestSopsBackendFilePermissions:
 
         mode = stat.S_IMODE(secrets_file.stat().st_mode)
         assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+
+
+class TestSopsAgeIdentityEnv:
+    """HMB-S031: age_identity propagation via SOPS_AGE_KEY_FILE env var."""
+
+    def test_decrypt_sets_age_key_file_env(self, tmp_path):
+        """AC-1: age_identity is passed to subprocess env as SOPS_AGE_KEY_FILE."""
+        from himitsubako.backends.sops import SopsBackend
+
+        key_path = tmp_path / "homeops" / "key.txt"
+        backend = SopsBackend(
+            secrets_file="/tmp/fake.enc.yaml",
+            age_identity=str(key_path),
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        env_arg = mock_run.call_args.kwargs.get("env")
+        assert env_arg is not None, "subprocess.run must be called with explicit env"
+        assert env_arg.get("SOPS_AGE_KEY_FILE") == str(key_path)
+
+    def test_encrypt_sets_age_key_file_env(self, tmp_path):
+        """AC-1: encrypt path also injects SOPS_AGE_KEY_FILE."""
+        from himitsubako.backends.sops import SopsBackend
+
+        secrets_file = tmp_path / ".secrets.enc.yaml"
+        key_path = tmp_path / "homeops" / "key.txt"
+        backend = SopsBackend(
+            secrets_file=str(secrets_file),
+            age_identity=str(key_path),
+        )
+
+        captured_envs: list[dict] = []
+
+        def fake_run(*args, **kwargs):
+            captured_envs.append(kwargs.get("env") or {})
+            argv = args[0]
+            if "--decrypt" in argv:
+                return MagicMock(returncode=0, stdout=yaml.dump({}), stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            backend.set("K", "v")
+
+        # Both decrypt and encrypt calls must carry the env var.
+        assert all(env.get("SOPS_AGE_KEY_FILE") == str(key_path) for env in captured_envs)
+
+    def test_age_identity_tilde_expanded(self):
+        """AC-1: `~` in age_identity is expanded before passing to env."""
+        from himitsubako.backends.sops import SopsBackend
+
+        backend = SopsBackend(
+            secrets_file="/tmp/fake.enc.yaml",
+            age_identity="~/.config/homeops/key.txt",
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        env_arg = mock_run.call_args.kwargs.get("env") or {}
+        value = env_arg.get("SOPS_AGE_KEY_FILE")
+        assert value is not None
+        assert "~" not in value
+        assert value == os.path.expanduser("~/.config/homeops/key.txt")
+
+    def test_no_identity_no_env_injection(self):
+        """AC-3: when age_identity is None, SOPS_AGE_KEY_FILE is not set by us."""
+        from himitsubako.backends.sops import SopsBackend
+
+        backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")  # no age_identity
+
+        # Pre-existing env value must not be overridden or forced.
+        preexisting = {"PATH": "/usr/bin", "HOME": "/home/test"}
+        with patch("subprocess.run") as mock_run, patch.dict(os.environ, preexisting, clear=True):
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        env_arg = mock_run.call_args.kwargs.get("env")
+        # When no age_identity is configured, backend should either pass env=None
+        # (inherit parent) or pass an env dict that does not contain SOPS_AGE_KEY_FILE.
+        if env_arg is not None:
+            assert "SOPS_AGE_KEY_FILE" not in env_arg
+
+    def test_default_identity_no_regression(self):
+        """AC-2: backend called without age_identity behaves exactly as before."""
+        from himitsubako.backends.sops import SopsBackend
+
+        backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            result = backend.get("K")
+
+        # Behavior must match the pre-S031 baseline: get() returns the value,
+        # subprocess argv is unchanged (no new flags).
+        assert result == "v"
+        argv = mock_run.call_args.args[0]
+        assert "--config" not in argv  # no config flag when not configured
+
+    def test_env_preserves_parent_environment(self, tmp_path):
+        """SOPS_AGE_KEY_FILE is injected alongside inherited env, not replacing it."""
+        from himitsubako.backends.sops import SopsBackend
+
+        key_path = tmp_path / "key.txt"
+        backend = SopsBackend(
+            secrets_file="/tmp/fake.enc.yaml",
+            age_identity=str(key_path),
+        )
+
+        marker = {"PATH": "/usr/bin:/bin", "HOME": "/home/test", "HIMITSUBAKO_MARKER": "1"}
+        with patch("subprocess.run") as mock_run, patch.dict(os.environ, marker, clear=True):
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        env_arg = mock_run.call_args.kwargs.get("env") or {}
+        assert env_arg.get("PATH") == "/usr/bin:/bin"
+        assert env_arg.get("HOME") == "/home/test"
+        assert env_arg.get("HIMITSUBAKO_MARKER") == "1"
+        assert env_arg.get("SOPS_AGE_KEY_FILE") == str(key_path)
+
+
+class TestSopsConfigFile:
+    """HMB-S031 Bug 2: --config <path> propagation for non-default .sops.yaml locations."""
+
+    def test_decrypt_passes_config_flag(self):
+        """sops_config_file is passed to the subprocess via --config."""
+        from himitsubako.backends.sops import SopsBackend
+
+        backend = SopsBackend(
+            secrets_file="/tmp/fake.enc.yaml",
+            sops_config_file="/custom/path/.sops.yaml",
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        argv = mock_run.call_args.args[0]
+        assert "--config" in argv
+        idx = argv.index("--config")
+        assert argv[idx + 1] == "/custom/path/.sops.yaml"
+
+    def test_encrypt_passes_config_flag(self, tmp_path):
+        """Encrypt path also carries --config."""
+        from himitsubako.backends.sops import SopsBackend
+
+        secrets_file = tmp_path / ".secrets.enc.yaml"
+        backend = SopsBackend(
+            secrets_file=str(secrets_file),
+            sops_config_file="/custom/.sops.yaml",
+        )
+
+        argv_list: list[list[str]] = []
+
+        def fake_run(*args, **kwargs):
+            argv_list.append(list(args[0]))
+            if "--decrypt" in args[0]:
+                return MagicMock(returncode=0, stdout=yaml.dump({}), stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            backend.set("K", "v")
+
+        encrypt_argv = next(a for a in argv_list if "--encrypt" in a)
+        assert "--config" in encrypt_argv
+        idx = encrypt_argv.index("--config")
+        assert encrypt_argv[idx + 1] == "/custom/.sops.yaml"
+
+    def test_config_tilde_expanded(self):
+        """`~` in sops_config_file is expanded before use."""
+        from himitsubako.backends.sops import SopsBackend
+
+        backend = SopsBackend(
+            secrets_file="/tmp/fake.enc.yaml",
+            sops_config_file="~/.config/homeops/.sops.yaml",
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        argv = mock_run.call_args.args[0]
+        idx = argv.index("--config")
+        value = argv[idx + 1]
+        assert "~" not in value
+        assert value == os.path.expanduser("~/.config/homeops/.sops.yaml")
+
+    def test_no_config_file_no_flag(self):
+        """When sops_config_file is None, --config is not passed."""
+        from himitsubako.backends.sops import SopsBackend
+
+        backend = SopsBackend(secrets_file="/tmp/fake.enc.yaml")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=yaml.dump({"K": "v"}), stderr="")
+            backend.get("K")
+
+        argv = mock_run.call_args.args[0]
+        assert "--config" not in argv
