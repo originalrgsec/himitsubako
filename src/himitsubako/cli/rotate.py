@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,35 @@ def _read_public_key(keys_path: Path) -> str:
     raise click.ClickException(msg)
 
 
+def _rules_with_age(sops_config_data: object) -> list[dict]:
+    """Return the list of creation_rules dicts that contain an `age` field.
+
+    HMB-S040: multi-rule safety requires counting how many rules have an
+    `age` recipient so we can distinguish the single-rule (safe) case
+    from the multi-rule (requires --rule) case.
+    """
+    if not isinstance(sops_config_data, dict):
+        return []
+    rules = sops_config_data.get("creation_rules")
+    if not isinstance(rules, list):
+        return []
+    return [r for r in rules if isinstance(r, dict) and "age" in r]
+
+
+def _format_rule_list(rules: list[dict]) -> str:
+    """Human-readable bullet list of rule path_regex + current age recipient.
+
+    Used in error messages when rotate-key refuses to act on a multi-rule
+    .sops.yaml or when --rule fails to match.
+    """
+    lines = []
+    for rule in rules:
+        regex = rule.get("path_regex", "<no path_regex>")
+        age = rule.get("age", "<no age>")
+        lines.append(f"    - path_regex: {regex}\n      age: {age}")
+    return "\n".join(lines)
+
+
 @click.command("rotate-key")
 @click.option(
     "--new-key",
@@ -72,7 +102,19 @@ def _read_public_key(keys_path: Path) -> str:
     help="Path to the new age keys file.",
 )
 @click.option("--dry-run", is_flag=True, help="Show what would change without modifying files.")
-def rotate_key(new_key: Path, dry_run: bool) -> None:
+@click.option(
+    "--rule",
+    "rule_pattern",
+    default=None,
+    help=(
+        "When .sops.yaml has multiple creation_rules, select which rule's "
+        "age recipient to rotate. The value is a regular expression matched "
+        "against each rule's path_regex; the match must resolve to exactly "
+        "one rule. Required if .sops.yaml has more than one rule with an "
+        "age field."
+    ),
+)
+def rotate_key(new_key: Path, dry_run: bool, rule_pattern: str | None) -> None:
     """Re-encrypt secrets with a new age key."""
     new_public_key = _read_public_key(new_key)
 
@@ -104,16 +146,60 @@ def rotate_key(new_key: Path, dry_run: bool) -> None:
             click.echo(f"  Skip {secrets_file} (file does not exist)")
         return
 
-    # Update .sops.yaml with new public key. Atomic write (tempfile +
-    # os.replace) so a SIGKILL or disk-full mid-write leaves either the
-    # old config intact or the new config intact, never a truncated file.
+    # HMB-S040 multi-rule safety: decide which rule(s) to update. The
+    # previous implementation blindly overwrote every rule's `age`
+    # field, silently collapsing multi-key configurations to one key.
     sops_config_data = yaml.safe_load(sops_yaml.read_text())
-    if isinstance(sops_config_data, dict) and "creation_rules" in sops_config_data:
-        for rule in sops_config_data["creation_rules"]:
-            if isinstance(rule, dict) and "age" in rule:
-                rule["age"] = new_public_key
+    age_rules = _rules_with_age(sops_config_data)
+
+    if not age_rules:
+        # Nothing with an age recipient — write the file unchanged (other
+        # keys like pgp may still be present and are left alone).
+        rules_to_update: list[dict] = []
+    elif len(age_rules) == 1 and rule_pattern is None:
+        # Single-rule case: behaviour unchanged (AC-1).
+        rules_to_update = age_rules
+    elif rule_pattern is None:
+        # Multi-rule without --rule: refuse to act. Silent overwrite is
+        # the bug we are fixing.
+        raise click.ClickException(
+            ".sops.yaml has multiple creation_rules with an age recipient. "
+            "Use --rule <path_regex> to select which rule to rotate.\n"
+            "Rules found:\n" + _format_rule_list(age_rules)
+        )
+    else:
+        # --rule supplied: match against each rule's path_regex. Require
+        # exactly one match; zero or many both indicate operator error.
+        try:
+            compiled = re.compile(rule_pattern)
+        except re.error as exc:
+            raise click.ClickException(
+                f"invalid --rule regular expression {rule_pattern!r}: {exc}"
+            ) from exc
+
+        matched = [r for r in age_rules if compiled.search(str(r.get("path_regex", "")))]
+        if not matched:
+            raise click.ClickException(
+                f"--rule {rule_pattern!r} matched no creation_rule path_regex.\n"
+                "Available rules:\n" + _format_rule_list(age_rules)
+            )
+        if len(matched) > 1:
+            raise click.ClickException(
+                f"--rule {rule_pattern!r} matched {len(matched)} rules; "
+                "must match exactly one.\nMatched rules:\n" + _format_rule_list(matched)
+            )
+        rules_to_update = matched
+
+    for rule in rules_to_update:
+        rule["age"] = new_public_key
     _atomic_write_yaml(sops_yaml, sops_config_data)
-    click.echo(f"  Updated .sops.yaml with new key: {new_public_key}")
+    if len(rules_to_update) == 1:
+        click.echo(
+            f"  Updated .sops.yaml rule {rules_to_update[0].get('path_regex')!r} "
+            f"with new key: {new_public_key}"
+        )
+    else:
+        click.echo(f"  Updated .sops.yaml with new key: {new_public_key}")
 
     # Re-encrypt secrets file with sops
     if secrets_path.exists():
