@@ -63,7 +63,9 @@ class KeychainBackend:
         # PasswordDeleteError is the keyring-specific signal for "no such key".
         delete_err: type[BaseException] = Exception
         with contextlib.suppress(AttributeError):
-            delete_err = keyring.errors.PasswordDeleteError
+            # keyring.errors is attached dynamically in _import_keyring;
+            # pyright basic mode cannot see the runtime assignment.
+            delete_err = keyring.errors.PasswordDeleteError  # pyright: ignore[reportAttributeAccessIssue]
 
         try:
             keyring.delete_password(self._service, key)
@@ -103,7 +105,7 @@ class KeychainBackend:
         # Attach the errors submodule explicitly so callers can do
         # `keyring.errors.PasswordDeleteError` even if the side-effect
         # registration was bypassed by a stale package state.
-        keyring_module.errors = _errors
+        keyring_module.errors = _errors  # pyright: ignore[reportAttributeAccessIssue]
         return keyring_module
 
     def _resolve_keyring(self):

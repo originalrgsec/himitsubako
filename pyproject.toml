@@ -66,6 +66,12 @@ dev = [
     "ruff>=0.8,!=0.15.10",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
+    # HMB-S037 (pyright basic per DRN-077). Pinned to the major series
+    # to keep the basic-mode rule surface stable; bump within this
+    # range only after re-running the triage against the new diagnostics.
+    # License: MIT (checked 2026-04-18). Health score recorded in
+    # Obsidian/code/oss-health-policy-scores.md.
+    "pyright>=1.1,<2.0",
 ]
 docs = [
     # License-checked and health-scored 2026-04-11 (HMB Sprint 3 prep).
