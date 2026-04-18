@@ -73,10 +73,6 @@ class GoogleOAuthBackend:
         return "google-oauth"
 
     @property
-    def credential_name(self) -> str:
-        return self._credential_name
-
-    @property
     def scopes(self) -> list[str]:
         return list(self._scopes)
 
