@@ -18,6 +18,17 @@ Three modes are supported:
    obtain a session token used in-memory only. The token is never
    written to disk and never logged. T-022 documents the residual risk
    of an unsafe unlock_command.
+
+**Session caching (HMB-S041 SEC-LOW-2).** When a session is obtained
+via ``unlock_command`` it is cached in ``self._session`` for the
+lifetime of this backend instance, so that subsequent calls do not
+re-run the (possibly slow, potentially interactive) unlock command on
+every credential operation. The cached token is never serialized and
+never written to disk. It is invalidated automatically when the
+``bw`` CLI reports a locked vault — the next operation will re-run
+``unlock_command`` to obtain a fresh session. There is no explicit
+clearing API; discard the ``BitwardenBackend`` instance if you need to
+force a re-unlock.
 """
 
 from __future__ import annotations
@@ -256,10 +267,17 @@ class BitwardenBackend:
         token or master password that bw echoed into its own error
         output cannot leak through BackendError.detail into log
         aggregators or uncaught-exception handlers.
+
+        HMB-S041 SEC-LOW-2: when bw reports a locked vault, invalidate
+        the cached ``self._session`` so the next operation will re-run
+        ``unlock_command`` (if configured) instead of retrying with a
+        dead session token.
         """
         text = _redact_tokens((stderr or "").strip())
         lower = text.lower()
         if "locked" in lower:
+            # Drop the cached session so the next operation re-unlocks.
+            self._session = None
             raise BackendError(
                 "bitwarden",
                 "vault is locked; run 'bw unlock' and re-export BW_SESSION",

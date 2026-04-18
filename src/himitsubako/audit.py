@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -58,8 +59,44 @@ def _ensure_audit_dir(directory: Path) -> None:
     a ``FileExistsError``. ``exist_ok`` does not alter the mode of an
     already-present directory, so the "do not chmod down on every write"
     invariant is preserved.
+
+    HMB-S041 SEC-LOW-3: if the audit directory pre-exists with a mode
+    wider than 0o700, emit a one-time ``UserWarning`` so the operator is
+    alerted. The mode is not narrowed — doing so could silently revoke
+    access for a sibling process that set a wider mode intentionally,
+    which the "do not chmod down" invariant explicitly protects. The
+    warning is raised only on the first call per process (tracked via a
+    module-level guard) to avoid spamming logs on every audit write.
     """
     directory.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
+    _warn_if_audit_dir_mode_wide(directory)
+
+
+_dir_mode_warned: set[str] = set()
+
+
+def _warn_if_audit_dir_mode_wide(directory: Path) -> None:
+    """Emit a one-time warning if the audit directory mode is > 0o700.
+
+    Called from ``_ensure_audit_dir``. The warning fires at most once per
+    directory path per process, keyed by the resolved path string.
+    """
+    key = str(directory)
+    if key in _dir_mode_warned:
+        return
+    try:
+        mode_bits = os.stat(directory).st_mode & 0o777
+    except OSError:
+        return
+    if mode_bits & ~_DIR_MODE:
+        _dir_mode_warned.add(key)
+        warnings.warn(
+            f"audit directory {directory} has mode {oct(mode_bits)}, "
+            f"wider than {oct(_DIR_MODE)}. Narrow it manually with "
+            f"'chmod 0700 {directory}' to restrict access to the "
+            "audit log.",
+            stacklevel=3,
+        )
 
 
 def write_audit_entry(
