@@ -12,8 +12,10 @@ Resolution algorithm for `resolve(key)`:
 
 `list_keys()` aggregates across the default backend and every distinct
 backend referenced in the credentials map. Backends that raise on
-`list_keys()` (e.g., the keychain backend) are caught, logged to stderr
-as a partial-failure warning, and skipped — the operation does not fail.
+`list_keys()` (e.g., the keychain backend) are caught, emitted via
+`warnings.warn` as a `UserWarning` so consumers can suppress or capture
+the warning with the stdlib `warnings` machinery, and skipped — the
+operation does not fail.
 
 Composite backends (HMB-S030 `google-oauth`) are built per-credential rather
 than per-backend-name, because each composite entry wraps its own underlying
@@ -24,7 +26,7 @@ dictionary key in that case.
 from __future__ import annotations
 
 import fnmatch
-import sys
+import warnings
 from typing import TYPE_CHECKING
 
 from himitsubako.backends.env import EnvBackend
@@ -121,9 +123,13 @@ class BackendRouter:
                 for key in backend.list_keys():
                     seen.add(key)
             except BackendError as exc:
-                print(
-                    f"warning: backend '{name}' skipped during list: {exc.detail}",
-                    file=sys.stderr,
+                # HMB-S041 LOW-4: use warnings.warn so library consumers
+                # can suppress or capture via stdlib `warnings` channels.
+                # Previously this wrote directly to sys.stderr, which
+                # library embedders had no clean way to silence.
+                warnings.warn(
+                    f"backend '{name}' skipped during list: {exc.detail}",
+                    stacklevel=2,
                 )
 
         # Composite credentials contribute their logical name on top of the
