@@ -181,7 +181,6 @@ def rotate_credential(credential: str, value_from_file: str | None, browser: boo
             target=target,
             use_browser=browser,
             config_path=config_path,
-            backend_name=backend_name,
         )
         return
 
@@ -260,10 +259,10 @@ def _rotate_google_oauth(
     target: GoogleOAuthBackend,
     use_browser: bool,
     config_path: Path,
-    backend_name: str,
 ) -> None:
     """Run OAuth rotation for a google-oauth credential."""
     method = "browser" if use_browser else "device"
+    backend_name = target.backend_name
 
     # Read current client_id and client_secret. A partial credential (missing
     # or corrupt refresh_token) is a valid starting point for rotation as long
