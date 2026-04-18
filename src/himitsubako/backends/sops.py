@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from himitsubako._redaction import redact_tokens
 from himitsubako.errors import BackendError, SecretNotFoundError
 
 _SOPS_TIMEOUT_SECONDS = 30
@@ -130,7 +131,10 @@ class SopsBackend:
             ) from exc
 
         if result.returncode != 0:
-            raise BackendError("sops", f"failed to decrypt {self._secrets_file}: {result.stderr}")
+            raise BackendError(
+                "sops",
+                f"failed to decrypt {self._secrets_file}: {redact_tokens(result.stderr)}",
+            )
 
         raw = yaml.safe_load(result.stdout)
         if raw is None:
@@ -207,7 +211,7 @@ class SopsBackend:
 
         if result.returncode != 0:
             tmp_path.unlink(missing_ok=True)
-            raise BackendError("sops", f"failed to encrypt: {result.stderr}")
+            raise BackendError("sops", f"failed to encrypt: {redact_tokens(result.stderr)}")
 
         # Atomic replace, then re-assert 0600 in case sops or the OS reset it.
         # There is a brief window between rename() and chmod() where the file

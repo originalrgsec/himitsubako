@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import click
@@ -31,6 +33,21 @@ from himitsubako.config import find_config, load_config
 from himitsubako.errors import BackendError
 from himitsubako.google_oauth_rotate import run_device_flow, run_installed_app_flow
 from himitsubako.router import BackendRouter
+
+_SOPS_SUBPROCESS_TIMEOUT = 30
+_ENV_SOPS_BIN = "HIMITSUBAKO_SOPS_BIN"
+
+
+def _resolve_sops_bin() -> str:
+    """Match HMB-S017 T-001 resolution order: env var > 'sops' on PATH.
+
+    Used by `hmb rotate-key` and `hmb init`, which do not have a loaded
+    HimitsubakoConfig in scope (rotate-key reads .sops.yaml directly;
+    init creates the config). For backend operations through
+    SopsBackend, the backend's own _resolve_sops_bin handles the
+    additional config-arg layer.
+    """
+    return os.environ.get(_ENV_SOPS_BIN, "").strip() or "sops"
 
 
 def _stdin_is_tty() -> bool:
@@ -51,17 +68,13 @@ def _read_public_key(keys_path: Path) -> str:
 @click.option(
     "--new-key",
     required=True,
-    type=click.Path(exists=False),
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to the new age keys file.",
 )
 @click.option("--dry-run", is_flag=True, help="Show what would change without modifying files.")
-def rotate_key(new_key: str, dry_run: bool) -> None:
+def rotate_key(new_key: Path, dry_run: bool) -> None:
     """Re-encrypt secrets with a new age key."""
-    new_key_path = Path(new_key)
-    if not new_key_path.exists():
-        raise click.ClickException(f"new key file not found: {new_key}")
-
-    new_public_key = _read_public_key(new_key_path)
+    new_public_key = _read_public_key(new_key)
 
     # Find .sops.yaml and .himitsubako.yaml in cwd
     project_dir = Path.cwd()
@@ -91,21 +104,24 @@ def rotate_key(new_key: str, dry_run: bool) -> None:
             click.echo(f"  Skip {secrets_file} (file does not exist)")
         return
 
-    # Update .sops.yaml with new public key
+    # Update .sops.yaml with new public key. Atomic write (tempfile +
+    # os.replace) so a SIGKILL or disk-full mid-write leaves either the
+    # old config intact or the new config intact, never a truncated file.
     sops_config_data = yaml.safe_load(sops_yaml.read_text())
     if isinstance(sops_config_data, dict) and "creation_rules" in sops_config_data:
         for rule in sops_config_data["creation_rules"]:
             if isinstance(rule, dict) and "age" in rule:
                 rule["age"] = new_public_key
-    sops_yaml.write_text(yaml.dump(sops_config_data, default_flow_style=False))
+    _atomic_write_yaml(sops_yaml, sops_config_data)
     click.echo(f"  Updated .sops.yaml with new key: {new_public_key}")
 
     # Re-encrypt secrets file with sops
     if secrets_path.exists():
+        sops_bin = _resolve_sops_bin()
         try:
             result = subprocess.run(
                 [
-                    "sops",
+                    sops_bin,
                     "updatekeys",
                     "--yes",
                     str(secrets_path),
@@ -113,20 +129,49 @@ def rotate_key(new_key: str, dry_run: bool) -> None:
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=_SOPS_SUBPROCESS_TIMEOUT,
             )
         except FileNotFoundError as exc:
             raise click.ClickException(
-                "sops not found on PATH. Install: https://github.com/getsops/sops"
+                f"sops binary not found at '{sops_bin}'. Install: https://github.com/getsops/sops"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise click.ClickException(
+                f"sops updatekeys timed out after {_SOPS_SUBPROCESS_TIMEOUT}s"
             ) from exc
 
         if result.returncode != 0:
-            raise click.ClickException(f"sops updatekeys failed: {result.stderr}")
+            raise click.ClickException(f"sops updatekeys failed: {redact_tokens(result.stderr)}")
 
         click.echo(f"  Re-encrypted {secrets_file}")
     else:
         click.echo(f"  Skip {secrets_file} (file does not exist)")
 
     click.echo("Key rotation complete.")
+
+
+def _atomic_write_yaml(path: Path, data: dict) -> None:
+    """Write a YAML document atomically via tempfile + os.replace.
+
+    Protects against truncation on SIGKILL or disk-full mid-write. The
+    tempfile is created in the same directory so os.replace() is atomic
+    under POSIX (rename within a single filesystem). On exception the
+    tempfile is unlinked.
+    """
+    fd, tmp_name = tempfile.mkstemp(suffix=".yaml", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        try:
+            tmp_file = os.fdopen(fd, "w")
+        except Exception:
+            os.close(fd)
+            raise
+        with tmp_file:
+            yaml.dump(data, tmp_file, default_flow_style=False)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    tmp_path.replace(path)
 
 
 @click.command("rotate")
@@ -239,7 +284,7 @@ def _read_rotation_value(value_from_file: str | None) -> str:
             click.echo(f"Error: file not found: {value_from_file}", err=True)
             sys.exit(2)
         try:
-            return file_path.read_text().rstrip("\n")
+            return file_path.read_text().rstrip("\r\n")
         except OSError as exc:
             click.echo(f"Error: cannot read {value_from_file}: {exc}", err=True)
             sys.exit(2)
@@ -251,7 +296,7 @@ def _read_rotation_value(value_from_file: str | None) -> str:
             err=True,
         )
         sys.exit(2)
-    return sys.stdin.read().rstrip("\n")
+    return sys.stdin.read().rstrip("\r\n")
 
 
 def _rotate_google_oauth(

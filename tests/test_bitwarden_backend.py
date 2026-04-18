@@ -268,3 +268,79 @@ class TestBitwardenBackendUnlockCommand:
 
         # No unlock_command call should appear
         assert not any("should_not_run" in " ".join(c) for c in call_log)
+
+
+class TestBitwardenUnlockCommandShellInjection:
+    """Regression coverage for HMB-S034 SEC-HIGH-3.
+
+    unlock_command was previously executed with shell=True against an
+    operator-controlled config string. After the fix it is parsed with
+    shlex.split() and run with shell=False, so shell metacharacters in
+    the config value cannot trigger command execution.
+    """
+
+    def test_unlock_command_is_split_to_argv_not_passed_to_shell(self, monkeypatch):
+        from himitsubako.backends.bitwarden import BitwardenBackend
+
+        monkeypatch.delenv("BW_SESSION", raising=False)
+        # A "command" with shell metacharacters that WOULD have executed
+        # `cat ~/.ssh/id_rsa` under shell=True. With shlex.split + shell=False
+        # the dollar-paren is treated as part of an argv element, not invoked.
+        backend = BitwardenBackend(
+            folder="myproject",
+            unlock_command="echo safe_$(echo PWNED)",
+        )
+
+        captured: list[object] = []
+        captured_shell: list[bool] = []
+
+        def fake_run(*args, **kwargs):
+            argv = args[0] if args else kwargs.get("args")
+            captured.append(argv)
+            captured_shell.append(kwargs.get("shell", False))
+            from unittest.mock import MagicMock
+
+            if isinstance(argv, list) and argv and argv[0] == "echo":
+                return MagicMock(returncode=0, stdout="safe_$(echo PWNED)\n", stderr="")
+            if isinstance(argv, list) and "unlock" in argv:
+                return MagicMock(returncode=0, stdout="session_token", stderr="")
+            return MagicMock(returncode=0, stdout='{"notes": "secret"}', stderr="")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = backend.get("MY_KEY")
+
+        assert result == "secret"
+        # The very first call (the unlock_command) MUST have been a list
+        # (argv form) and must have been called with shell=False.
+        assert isinstance(captured[0], list)
+        assert captured_shell[0] is False
+        # The shell metacharacters survived as literal argv tokens — they
+        # were not interpreted by /bin/sh.
+        assert any("$(echo" in arg for arg in captured[0])
+
+    def test_unparseable_unlock_command_raises_backend_error(self, monkeypatch):
+        from himitsubako.backends.bitwarden import BitwardenBackend
+        from himitsubako.errors import BackendError
+
+        monkeypatch.delenv("BW_SESSION", raising=False)
+        # Unbalanced quotes — shlex raises ValueError.
+        backend = BitwardenBackend(
+            folder="myproject",
+            unlock_command='echo "unbalanced',
+        )
+
+        with pytest.raises(BackendError) as exc_info:
+            backend.get("MY_KEY")
+        assert "not parseable" in str(exc_info.value).lower()
+
+    def test_empty_unlock_command_raises_backend_error(self, monkeypatch):
+        from himitsubako.backends.bitwarden import BitwardenBackend
+        from himitsubako.errors import BackendError
+
+        monkeypatch.delenv("BW_SESSION", raising=False)
+        backend = BitwardenBackend(folder="myproject", unlock_command="   ")
+
+        with pytest.raises(BackendError) as exc_info:
+            backend.get("MY_KEY")
+        # shlex.split("   ") returns []; we surface that as "empty argv".
+        assert "empty argv" in str(exc_info.value).lower()
