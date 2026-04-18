@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 from pathlib import Path
@@ -71,9 +72,18 @@ def _ensure_age_key(keys_path: Path) -> str:
     if not public_key:
         raise click.ClickException("age-keygen did not produce a public key")
 
-    # Write the key file with the standard format
-    keys_path.write_text(result.stdout)
-    keys_path.chmod(0o600)
+    # HMB-S039 / HMB-S034 HIGH-3: create the keys file with mode 0o600
+    # atomically. Using os.open(O_CREAT|O_WRONLY|O_EXCL, 0o600) eliminates
+    # the window between write_text() (which respects umask, typically
+    # yielding 0o644/0o664) and a trailing chmod(0o600) during which the
+    # age private key could be world-readable on a shared host. The
+    # O_EXCL flag is defense in depth against a race between the
+    # existence check above and this open.
+    fd = os.open(keys_path, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, result.stdout.encode("utf-8"))
+    finally:
+        os.close(fd)
 
     return public_key
 
@@ -162,9 +172,17 @@ def init(force: bool) -> None:
             ) from exc
 
         if result.returncode != 0:
-            click.echo(f"  warning: could not encrypt {secrets_file}: {result.stderr}")
-        else:
-            click.echo(f"  wrote {secrets_file} (encrypted)")
+            # HMB-S039 AC-2: unlink the plaintext {} file and fail
+            # loudly so the user cannot mistake a broken init for a
+            # successful one. Previously this path emitted a "warning"
+            # and continued, leaving a misleading plaintext artifact on
+            # disk.
+            with contextlib.suppress(OSError):
+                secrets_path.unlink()
+            raise click.ClickException(
+                f"sops encrypt failed for {secrets_file}: {result.stderr.strip()}"
+            )
+        click.echo(f"  wrote {secrets_file} (encrypted)")
     else:
         click.echo(f"  skip {secrets_file} (exists, use --force to overwrite)")
 

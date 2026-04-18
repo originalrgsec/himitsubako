@@ -228,18 +228,22 @@ Re-encrypt every SOPS-backed file in `creation_rules` with a new age keypair.
 **Synopsis**
 
 ```sh
-hmb rotate-key --new-key PATH [--dry-run]
+hmb rotate-key --new-key PATH [--dry-run] [--rule REGEX]
 ```
 
 **Options**
 
 - `--new-key PATH` — path to a new age keys file. Must already exist; `hmb rotate-key` does not call `age-keygen` for you.
 - `--dry-run` — print what would change without touching any file.
+- `--rule REGEX` — when `.sops.yaml` has more than one `creation_rule` with an `age` recipient, select which one to rotate. The value is a regular expression matched against each rule's `path_regex`; it must resolve to exactly one rule.
 
 **Behavior**
 
 1. Reads the new public key from the `# public key:` comment line of `--new-key`.
-2. Updates every `creation_rules` entry in `.sops.yaml` to use the new public key.
+2. Determines which `creation_rules` entry in `.sops.yaml` to update:
+   - If exactly one rule has an `age` recipient, it is updated (no flag needed).
+   - If more than one rule has an `age` recipient and `--rule` was **not** supplied, the command aborts with an error listing each rule's `path_regex` and current `age` recipient. This avoids silently collapsing a multi-recipient configuration to a single key.
+   - If `--rule` **was** supplied, the regex is matched against each rule's `path_regex`. Zero matches or more than one match both abort with a non-zero exit and list the rules for reference.
 3. Runs `sops updatekeys --yes` against the secrets file, which re-encrypts with the new recipient and removes the old one.
 
 After rotation, the old age key can no longer decrypt the secrets file. Keep the old keys file around until you have verified the new one works.
@@ -247,7 +251,7 @@ After rotation, the old age key can no longer decrypt the secrets file. Keep the
 **Exit codes**
 
 - `0` — rotation complete (or dry-run printed).
-- `1` — usage error: `--new-key` path missing, no `.sops.yaml`, no public key comment in the new keys file.
+- non-zero — usage error, no `.sops.yaml`, no public key comment in the new keys file, ambiguous multi-rule `.sops.yaml` without `--rule`, or `--rule` regex with zero/many matches.
 - non-zero from click for backend errors — `sops updatekeys` failure is surfaced with stderr detail.
 
 **Examples**
@@ -256,6 +260,9 @@ After rotation, the old age key can no longer decrypt the secrets file. Keep the
 age-keygen -o ~/.config/sops/age/keys.txt.new
 hmb rotate-key --dry-run --new-key ~/.config/sops/age/keys.txt.new
 hmb rotate-key --new-key ~/.config/sops/age/keys.txt.new
+
+# Multi-rule .sops.yaml — select which rule to rotate
+hmb rotate-key --new-key ~/.config/sops/age/keys.txt.new --rule 'prod/.*'
 ```
 
 ---

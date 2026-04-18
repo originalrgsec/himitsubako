@@ -29,6 +29,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from himitsubako import __version__ as _hmb_version
 from himitsubako._redaction import redact_tokens
 from himitsubako.errors import BackendError
 
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 # Google OAuth 2.0 endpoints for device flow. Pinned to the current documented
 # URIs so a DNS typo or copy-paste error surfaces here rather than at runtime.
 DEVICE_CODE_ENDPOINT = "https://oauth2.googleapis.com/device/code"
+_USER_AGENT = f"himitsubako/{_hmb_version}"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 AUTH_PROVIDER_CERT_URL = "https://www.googleapis.com/oauth2/v1/certs"
 DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
@@ -236,10 +238,17 @@ def _default_post(url: str, fields: dict[str, str]) -> dict[str, object]:
     which uses the system CA bundle and rejects self-signed certificates.
     """
     body = urllib.parse.urlencode(fields).encode("ascii")
+    # HMB-S041 SEC-LOW-4: identify ourselves in the User-Agent so Google-
+    # side telemetry and incident-response can distinguish himitsubako
+    # traffic from generic urllib / python-requests traffic. Version is
+    # pinned to the library's __version__ so upgrades are attributable.
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": _USER_AGENT,
+        },
         method="POST",
     )
     ssl_context = ssl.create_default_context()

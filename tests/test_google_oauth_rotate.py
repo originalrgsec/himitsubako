@@ -512,3 +512,93 @@ class TestRotateCliIntegration:
 
         assert result.exit_code != 0
         assert "--browser" in result.output.lower() or "google-oauth" in result.output.lower()
+
+
+class TestDefaultPost:
+    """HMB-S041 LOW-3: coverage for _default_post TLS/error paths.
+
+    `_default_post` is the stdlib-backed POST helper used by the device
+    flow when no injected transport is supplied. It handles three
+    disjoint outcomes: success (200 + JSON), OAuth error response (4xx +
+    JSON body), and transport failure (DNS/connection/timeout, wrapped
+    as BackendError). Prior to this test class the non-happy paths were
+    only exercised indirectly via the flow-level tests that inject a
+    fake_post; this class covers the helper directly.
+    """
+
+    def _fake_http_error(self, url: str, status: int, json_body: bytes):
+        """Build a urllib.error.HTTPError that mimics Google's 4xx responses."""
+        import io
+        from urllib.error import HTTPError
+
+        return HTTPError(
+            url=url,
+            code=status,
+            msg="Bad Request",
+            hdrs=None,  # type: ignore[arg-type]
+            fp=io.BytesIO(json_body),
+        )
+
+    def test_default_post_returns_dict_on_http_error_with_json_body(self) -> None:
+        """AC-LOW-3: 4xx response with JSON body → dict, not raised."""
+        import json as _json
+
+        from himitsubako.google_oauth_rotate import _default_post
+
+        error_body = _json.dumps(
+            {"error": "authorization_pending", "error_description": "waiting"}
+        ).encode("utf-8")
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.side_effect = self._fake_http_error(
+                "https://oauth2.googleapis.com/token", 400, error_body
+            )
+            result = _default_post("https://oauth2.googleapis.com/token", {"grant_type": "x"})
+
+        assert result == {
+            "error": "authorization_pending",
+            "error_description": "waiting",
+        }
+
+    def test_default_post_wraps_url_error_as_backend_error(self) -> None:
+        """AC-LOW-3: transport failure → BackendError, no urllib traceback."""
+        from urllib.error import URLError
+
+        from himitsubako.errors import BackendError
+        from himitsubako.google_oauth_rotate import _default_post
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.side_effect = URLError("Connection refused")
+            with pytest.raises(BackendError) as excinfo:
+                _default_post("https://oauth2.googleapis.com/token", {"grant_type": "x"})
+
+        # The wrapping error must name the backend and the endpoint,
+        # but must not echo the client_secret (never in scope here).
+        assert excinfo.value.backend == "google-oauth"
+        assert "oauth2.googleapis.com" in excinfo.value.detail
+        assert "Connection refused" in excinfo.value.detail
+
+    def test_default_post_sets_himitsubako_user_agent(self) -> None:
+        """HMB-S041 SEC-LOW-4: outgoing requests carry himitsubako/<version>."""
+        import json as _json
+        from unittest.mock import MagicMock
+
+        from himitsubako.google_oauth_rotate import _default_post
+
+        captured_requests = []
+
+        def fake_urlopen(req, timeout=None, context=None):
+            captured_requests.append(req)
+            resp = MagicMock()
+            resp.read.return_value = _json.dumps({"ok": True}).encode("utf-8")
+            resp.__enter__ = lambda s: s
+            resp.__exit__ = lambda *a: None
+            return resp
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            _default_post("https://oauth2.googleapis.com/token", {"grant_type": "x"})
+
+        assert captured_requests, "urlopen was not called"
+        req = captured_requests[0]
+        ua = req.get_header("User-agent")
+        assert ua is not None and ua.startswith("himitsubako/"), ua

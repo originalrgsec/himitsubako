@@ -1,0 +1,46 @@
+# HMB-S037: local pre-commit hook config.
+#
+# This file is opt-in for contributors who want the same quality gates
+# the CI workflow enforces to fire at commit time. To enable:
+#
+#     uv run pre-commit install
+#
+# CI already runs every hook below; the config is duplicated locally so
+# developers can fail fast without waiting for a push + CI cycle. The
+# `language: system` entries run the pinned tool from the project
+# venv (via uv) so pre-commit does not fetch its own toolchain and
+# version-drift between local and CI is impossible by construction.
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: uv run ruff check
+        types: [python]
+        pass_filenames: false
+        args: [src, tests]
+
+      - id: ruff-format
+        name: ruff format --check
+        language: system
+        entry: uv run ruff format --check
+        types: [python]
+        pass_filenames: false
+        args: [src, tests]
+
+      - id: mypy
+        name: mypy
+        language: system
+        entry: uv run mypy
+        types: [python]
+        pass_filenames: false
+        args: [src]
+
+      - id: pyright
+        name: pyright (basic per DRN-077)
+        language: system
+        entry: uv run pyright
+        types: [python]
+        pass_filenames: false

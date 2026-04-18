@@ -189,7 +189,7 @@ class TestRouterListKeys:
         assert "AWS_KEY" in keys
         assert "DB_PASSWORD" in keys
 
-    def test_list_keys_skips_backends_that_raise(self, capsys):
+    def test_list_keys_skips_backends_that_raise(self, recwarn):
         cfg = HimitsubakoConfig(
             default_backend="sops",
             credentials={"K": {"backend": "keychain"}},
@@ -202,9 +202,10 @@ class TestRouterListKeys:
         keys = router.list_keys()
         assert "sops_key" in keys
 
-        captured = capsys.readouterr()
-        assert "keychain" in captured.err
-        assert "skipped" in captured.err.lower() or "warning" in captured.err.lower()
+        # HMB-S041 LOW-4: router emits warnings.warn, not bare stderr.
+        messages = [str(w.message) for w in recwarn.list]
+        assert any("keychain" in m for m in messages), messages
+        assert any("skipped" in m.lower() or "warning" in m.lower() for m in messages), messages
 
 
 class TestRouterCaching:

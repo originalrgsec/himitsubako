@@ -73,7 +73,12 @@ class TestHmbInit:
 
             with patch("himitsubako.cli.init._ensure_age_key") as mock_age:
                 mock_age.return_value = "age1testpublickey123"
-                result = runner.invoke(main, ["init"])
+                # Mock sops so the encrypt path succeeds — HMB-S039
+                # made init exit non-zero on sops failure, so we must
+                # not trigger that here.
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                    result = runner.invoke(main, ["init"])
 
             assert result.exit_code == 0
             # Original content preserved

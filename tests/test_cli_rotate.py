@@ -168,3 +168,164 @@ class TestRotateKeySecurityHardening:
             assert result.exit_code != 0
             # The original .sops.yaml must be intact — atomicity invariant.
             assert sops_yaml.read_text() == original_content
+
+
+_MULTI_RULE_SOPS = {
+    "creation_rules": [
+        {"path_regex": r"prod/.*\.secrets\.enc\.yaml$", "age": "age1prodoldkey"},
+        {"path_regex": r"test/.*\.secrets\.enc\.yaml$", "age": "age1testoldkey"},
+    ],
+}
+
+
+class TestRotateKeyMultiRuleSafety:
+    """HMB-S040: multi-rule .sops.yaml must not silently collapse to one key."""
+
+    def _runner_with_multi_rule(self, tmp_path: Path):
+        """Helper: set up a multi-rule .sops.yaml project + new key file."""
+        runner = CliRunner()
+        new_key_file = tmp_path / "new_keys.txt"
+        new_key_file.write_text(
+            "# created: 2026-04-18\n# public key: age1newrotatedkey\nAGE-SECRET-KEY-1NEW\n"
+        )
+        return runner, new_key_file
+
+    def test_multi_rule_without_rule_flag_exits_nonzero(self, tmp_path: Path) -> None:
+        """AC-2: > 1 creation_rule with `age` + no --rule → exit != 0, list rules."""
+        from himitsubako.cli import main
+
+        runner, new_key_file = self._runner_with_multi_rule(tmp_path)
+
+        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+            write_sops_config(Path(td))
+            (Path(td) / ".sops.yaml").write_text(yaml.dump(_MULTI_RULE_SOPS))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted")
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                result = runner.invoke(main, ["rotate-key", "--new-key", str(new_key_file)])
+
+            assert result.exit_code != 0, (
+                f"expected non-zero exit on multi-rule without --rule (HMB-S040 AC-2); "
+                f"got {result.exit_code}"
+            )
+            # sops updatekeys must not have been invoked
+            updatekeys_calls = [
+                call
+                for call in mock_run.call_args_list
+                if call.args and "updatekeys" in call.args[0]
+            ]
+            assert not updatekeys_calls, "sops updatekeys must not run on ambiguous multi-rule"
+
+            # Error message should list each rule's path_regex so the user
+            # knows what to pass to --rule.
+            output = result.output
+            assert "prod/" in output and "test/" in output, (
+                f"error must list each path_regex; got: {output}"
+            )
+            assert "--rule" in output, "error must name the --rule flag"
+
+    def test_multi_rule_with_rule_flag_updates_only_matching(self, tmp_path: Path) -> None:
+        """AC-3: --rule <regex> matches exactly one rule → only that rule's age updated."""
+        from himitsubako.cli import main
+
+        runner, new_key_file = self._runner_with_multi_rule(tmp_path)
+
+        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+            sops_yaml = Path(td) / ".sops.yaml"
+            write_sops_config(Path(td))
+            sops_yaml.write_text(yaml.dump(_MULTI_RULE_SOPS))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted")
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                result = runner.invoke(
+                    main,
+                    [
+                        "rotate-key",
+                        "--new-key",
+                        str(new_key_file),
+                        "--rule",
+                        r"prod/.*",
+                    ],
+                )
+
+            assert result.exit_code == 0, result.output
+            updated = yaml.safe_load(sops_yaml.read_text())
+            rules_by_regex = {r["path_regex"]: r["age"] for r in updated["creation_rules"]}
+            assert rules_by_regex[r"prod/.*\.secrets\.enc\.yaml$"] == "age1newrotatedkey"
+            # Test rule must NOT have been touched.
+            assert rules_by_regex[r"test/.*\.secrets\.enc\.yaml$"] == "age1testoldkey"
+
+    def test_rule_flag_no_match_exits_nonzero(self, tmp_path: Path) -> None:
+        """AC-3: --rule with no matching rule → exit != 0, list available rules."""
+        from himitsubako.cli import main
+
+        runner, new_key_file = self._runner_with_multi_rule(tmp_path)
+
+        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+            write_sops_config(Path(td))
+            (Path(td) / ".sops.yaml").write_text(yaml.dump(_MULTI_RULE_SOPS))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted")
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                result = runner.invoke(
+                    main,
+                    [
+                        "rotate-key",
+                        "--new-key",
+                        str(new_key_file),
+                        "--rule",
+                        "nomatch/whatever",
+                    ],
+                )
+
+            assert result.exit_code != 0, (
+                f"expected non-zero exit on --rule no-match (HMB-S040 AC-3); got {result.exit_code}"
+            )
+            assert "prod/" in result.output and "test/" in result.output, result.output
+
+    def test_rule_flag_multiple_matches_exits_nonzero(self, tmp_path: Path) -> None:
+        """AC-3: --rule matching > 1 rule → exit != 0 (ambiguity safeguard)."""
+        from himitsubako.cli import main
+
+        runner, new_key_file = self._runner_with_multi_rule(tmp_path)
+
+        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+            write_sops_config(Path(td))
+            (Path(td) / ".sops.yaml").write_text(yaml.dump(_MULTI_RULE_SOPS))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted")
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                # Regex ".*" matches every path_regex.
+                result = runner.invoke(
+                    main,
+                    ["rotate-key", "--new-key", str(new_key_file), "--rule", ".*"],
+                )
+
+            assert result.exit_code != 0, (
+                f"expected non-zero exit on --rule multi-match (HMB-S040 AC-3); "
+                f"got {result.exit_code}"
+            )
+
+    def test_single_rule_behaviour_unchanged(self, tmp_path: Path) -> None:
+        """AC-1: single-rule .sops.yaml still works without --rule."""
+        from himitsubako.cli import main
+
+        runner, new_key_file = self._runner_with_multi_rule(tmp_path)
+
+        with runner.isolated_filesystem(temp_dir=tmp_path) as td:
+            sops_yaml = Path(td) / ".sops.yaml"
+            write_sops_config(Path(td))
+            sops_yaml.write_text(yaml.dump(SOPS_CREATION_RULES))
+            (Path(td) / ".secrets.enc.yaml").write_text("encrypted")
+
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                result = runner.invoke(main, ["rotate-key", "--new-key", str(new_key_file)])
+
+            assert result.exit_code == 0, result.output
+            updated = yaml.safe_load(sops_yaml.read_text())
+            assert updated["creation_rules"][0]["age"] == "age1newrotatedkey"

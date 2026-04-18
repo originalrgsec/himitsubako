@@ -49,7 +49,7 @@ def _require_pydantic_settings() -> None:
         ) from _PYDANTIC_SETTINGS_IMPORT_ERROR
 
 
-class HimitsubakoSettingsSource(PydanticBaseSettingsSource):
+class HimitsubakoSettingsSource(PydanticBaseSettingsSource):  # pyright: ignore[reportGeneralTypeIssues]
     """Pull settings field values from himitsubako backends.
 
     Construct one of these inside your settings model's
@@ -70,6 +70,16 @@ class HimitsubakoSettingsSource(PydanticBaseSettingsSource):
         self._prefix = prefix
 
     def _resolve_backend(self) -> SecretBackend:
+        """Return the backend for this source, caching the resolution.
+
+        HMB-S041 MED-6 (Sprint 8 /code-review): the resolved backend is
+        cached on ``self._backend`` for the lifetime of the source
+        instance. If the project's ``.himitsubako.yaml`` changes after
+        the source has been constructed, this source will keep using
+        the original backend until the source is re-created. In tests
+        that mutate the on-disk config mid-run, construct a new
+        ``HimitsubakoSettingsSource`` per case rather than reusing one.
+        """
         if self._backend is not None:
             return self._backend
         # Lazy import to avoid pulling in the api module at class-definition time.
