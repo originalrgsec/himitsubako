@@ -120,7 +120,9 @@ def rotate_key(new_key: str, dry_run: bool) -> None:
             ) from exc
 
         if result.returncode != 0:
-            raise click.ClickException(f"sops updatekeys failed: {result.stderr}")
+            raise click.ClickException(
+                f"sops updatekeys failed: {redact_tokens(result.stderr)}"
+            )
 
         click.echo(f"  Re-encrypted {secrets_file}")
     else:
