@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,13 @@ import yaml
 from himitsubako.direnv import generate_envrc
 
 _DEFAULT_KEYS_PATH = Path.home() / ".config" / "sops" / "age" / "keys.txt"
+_SUBPROCESS_TIMEOUT = 30
+_ENV_SOPS_BIN = "HIMITSUBAKO_SOPS_BIN"
+
+
+def _resolve_sops_bin() -> str:
+    """Resolve sops binary: env var > 'sops' on PATH (matches T-001)."""
+    return os.environ.get(_ENV_SOPS_BIN, "").strip() or "sops"
 
 
 def _ensure_age_key(keys_path: Path) -> str:
@@ -34,11 +42,14 @@ def _ensure_age_key(keys_path: Path) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_SUBPROCESS_TIMEOUT,
         )
     except FileNotFoundError as exc:
         raise click.ClickException(
             "age-keygen not found on PATH. Install: https://github.com/FiloSottile/age"
         ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise click.ClickException(f"age-keygen timed out after {_SUBPROCESS_TIMEOUT}s") from exc
 
     if result.returncode != 0:
         raise click.ClickException(f"age-keygen failed: {result.stderr}")
@@ -137,18 +148,27 @@ def init(force: bool) -> None:
     # Create empty encrypted secrets file
     secrets_path = project_dir / secrets_file
     if not secrets_path.exists() or force:
-        # Write empty YAML, then encrypt with sops
+        # Write empty YAML, then encrypt with sops. Resolve the sops
+        # binary via env var so HIMITSUBAKO_SOPS_BIN is honored here as
+        # it is by SopsBackend (matches T-001 mitigation across all
+        # call sites).
+        sops_bin = _resolve_sops_bin()
         secrets_path.write_text(yaml.dump({}))
         try:
             result = subprocess.run(
-                ["sops", "--encrypt", "--in-place", str(secrets_path)],
+                [sops_bin, "--encrypt", "--in-place", str(secrets_path)],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=_SUBPROCESS_TIMEOUT,
             )
         except FileNotFoundError as exc:
             raise click.ClickException(
-                "sops not found on PATH. Install: https://github.com/getsops/sops"
+                f"sops binary not found at '{sops_bin}'. Install: https://github.com/getsops/sops"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise click.ClickException(
+                f"sops encrypt timed out after {_SUBPROCESS_TIMEOUT}s"
             ) from exc
 
         if result.returncode != 0:
