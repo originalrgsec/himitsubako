@@ -25,18 +25,6 @@ _END = "# --- himitsubako end ---"
 _HEADER_COMMENT = "# himitsubako-managed — edits between markers will be overwritten by hmb"
 
 
-def generate_envrc(secrets_file: str = ".secrets.enc.yaml") -> str:
-    """Return the full content of a himitsubako-managed .envrc."""
-    quoted = shlex.quote(secrets_file)
-    return (
-        f"{_HEADER_COMMENT}\n"
-        f"{_START}\n"
-        f'eval "$(sops -d --output-type dotenv {quoted} 2>/dev/null | '
-        "sed 's/^/export /')\" || true\n"
-        f"{_END}\n"
-    )
-
-
 def _managed_block(secrets_file: str) -> str:
     """Return just the managed block (markers + body, no header comment).
 
@@ -53,6 +41,11 @@ def _managed_block(secrets_file: str) -> str:
         "sed 's/^/export /')\" || true\n"
         f"{_END}\n"
     )
+
+
+def generate_envrc(secrets_file: str = ".secrets.enc.yaml") -> str:
+    """Return the full content of a himitsubako-managed .envrc."""
+    return f"{_HEADER_COMMENT}\n{_managed_block(secrets_file)}"
 
 
 def update_envrc(envrc_path: Path, secrets_file: str = ".secrets.enc.yaml") -> None:
