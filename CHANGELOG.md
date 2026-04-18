@@ -5,6 +5,105 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-18
+
+Sprint 9 — Sprint 8 Carry-out + Pyright Gate. Five stories totalling
+7 points. Completes the Sprint 8 spawned backlog (HMB-S039/S040/S041),
+installs the pyright basic-mode quality gate per DRN-077 (HMB-S037),
+and codifies the scrub-skills workflow at the vault-policy level
+(HMB-S038) so OWB Sprint 31+ inherits the sequencing contract.
+
+### Added
+
+- **`hmb rotate-key --rule <path_regex>`.** When `.sops.yaml` has
+  more than one `creation_rule` with an `age` recipient, `--rule`
+  selects which one to rotate. Value is a regular expression matched
+  against each rule's `path_regex`; must resolve to exactly one rule
+  or the command aborts non-zero with the list of matches.
+  Single-rule setups are unaffected. Established by HMB-S040.
+- **Pyright basic-mode gate.** `pyright>=1.1,<2.0` in `[dev]` extra;
+  `pyrightconfig.json` scoped to `src/` (matches mypy); CI step
+  added after `mypy` in `.github/workflows/ci.yml`. Error budget is
+  zero; the three src/ issues surfaced by the HMB-S036 spike are
+  suppressed inline with scoped `# pyright: ignore[<rule>]`
+  directives naming each rule. Established by HMB-S037.
+- **`.pre-commit-config.yaml`** with opt-in local hooks (ruff check,
+  ruff format, mypy, pyright) running through the project venv via
+  `uv run` so local and CI cannot drift. Opt in with
+  `uv run pre-commit install`. Part of HMB-S037.
+
+### Changed
+
+- **`hmb init` exits non-zero on sops encrypt failure.** Previously
+  warned and continued, leaving a misleading plaintext
+  `.secrets.enc.yaml` on disk; now unlinks the plaintext file and
+  raises a `ClickException`. **Behavior change for consumer
+  scripts** that relied on the warn-and-continue path — the minor
+  version bump covers the semver break for pre-1.0 releases.
+  Established by HMB-S039.
+- **`hmb rotate-key` no longer silently collapses multi-rule
+  `.sops.yaml`.** Previously overwrote every `creation_rules[].age`
+  field with the new public key, destroying multi-recipient
+  configurations without warning. Now aborts non-zero on ambiguity
+  (with a list of each rule's `path_regex` and current `age`) and
+  requires `--rule` to select one rule. Established by HMB-S040.
+- **`BackendRouter.list_keys` partial-failure notice** is now emitted
+  via `warnings.warn(UserWarning)` instead of direct
+  `print(..., file=sys.stderr)`. Library consumers can suppress or
+  capture through standard `warnings` machinery. Part of HMB-S041
+  (LOW-4).
+- **CONTRIBUTING.md** lists pyright alongside ruff/mypy/pytest in
+  the quality-gate section; documents the pre-commit opt-in. Part of
+  HMB-S037.
+
+### Security
+
+- **Atomic age keys file creation.** `_ensure_age_key()` now creates
+  the age private-key file via
+  `os.open(O_CREAT|O_WRONLY|O_EXCL, 0o600)` + `os.write`. Previously
+  `write_text()` respected the process umask (typically 0o644 or
+  0o664) and a trailing `chmod(0o600)` narrowed the mode, leaving a
+  race window during which the age private key was world-readable on
+  a shared multi-user host. Closes HMB-S034 HIGH-3 carry-out.
+  Established by HMB-S039.
+- **Audit directory mode warning.** `_ensure_audit_dir` now emits a
+  one-time `UserWarning` if the audit directory pre-exists with a
+  mode wider than 0o700. The mode is not narrowed — the
+  "do not chmod down on every write" invariant is preserved. Part
+  of HMB-S041 (SEC-LOW-3).
+- **BitwardenBackend session invalidation.** `_raise_friendly` now
+  clears `self._session` when `bw` reports a locked vault, so the
+  next operation re-runs `unlock_command` instead of retrying with a
+  dead session token. Part of HMB-S041 (SEC-LOW-2).
+- **`User-Agent: himitsubako/<version>` on OAuth device-flow POSTs.**
+  Improves Google-side telemetry distinguishability for incident
+  response. Part of HMB-S041 (SEC-LOW-4).
+
+### Fixed
+
+- **`_default_post` direct test coverage.** Previously only tested
+  indirectly via the flow-level tests that injected a fake
+  transport. New tests exercise the HTTPError-with-JSON-body path
+  (returns dict, not raises), the URLError wrap (BackendError with
+  endpoint named, no urllib traceback leaked), and the User-Agent
+  header. Part of HMB-S041 (LOW-3).
+- **`HimitsubakoSettingsSource` cache lifetime documented.**
+  `_resolve_backend` caches the backend on `self._backend` for the
+  source's lifetime; if on-disk config changes mid-process, callers
+  must construct a new source. Documented in the method docstring.
+  Part of HMB-S041 (MED-6).
+
+### Policy / governance (vault-only, not in this repo)
+
+- **Scrub-skills section in `Obsidian/code/development-process.md`.**
+  Names `/simplify`, `/code-review`, and `/refactor-clean` as
+  concrete steps in the SDLC, with strict ordering, per-skill
+  blocking rules, and a sprint-close record-keeping requirement.
+  Quick reference at
+  `Obsidian/code/scrub-skills-quick-reference.md`. OWB Sprint 31
+  inherits via OWB-S140 (absorb story filed). Established by
+  HMB-S038.
+
 ## [0.8.0] - 2026-04-18
 
 Sprint 8 — Code Quality Scrub. Four-pass scrub toolchain run as the
