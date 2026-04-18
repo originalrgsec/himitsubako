@@ -110,6 +110,9 @@ jobs:
       - name: mypy
         run: uv run mypy src
 
+      - name: pyright (basic mode per DRN-077)
+        run: uv run pyright
+
       - name: Unit tests + coverage gate
         run: >-
           uv run pytest

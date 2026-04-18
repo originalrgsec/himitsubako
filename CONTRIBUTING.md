@@ -77,10 +77,21 @@ Every commit must pass the full CI gate:
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy src
+uv run pyright
 uv run pytest
 ```
 
-All four are green on every commit to `main`. See `.github/workflows/ci.yml` for the matrix (Python 3.12 and 3.13 on Ubuntu).
+All five are green on every commit to `main`. See `.github/workflows/ci.yml` for the matrix (Python 3.12 and 3.13 on Ubuntu).
+
+**pyright basic mode.** Installed as a `[dev]` dependency in `pyproject.toml` and configured in `pyrightconfig.json`. It runs against `src/` only (matching the mypy scope) under basic type-checking mode per `Obsidian/decisions/DRN-077`. Tests are out of scope because they intentionally pass dict literals to pydantic models that coerce at runtime. The three src/ cases that basic mode surfaced during the HMB-S036 spike are suppressed inline with `# pyright: ignore[...]` directives that name the specific rule.
+
+**Pre-commit hooks (optional).** A `.pre-commit-config.yaml` is provided so contributors can run the exact CI gates at commit time. Opt in with:
+
+```sh
+uv run pre-commit install
+```
+
+The hooks run through the project venv via `uv run`, so local and CI cannot drift.
 
 ## Dependency discipline
 

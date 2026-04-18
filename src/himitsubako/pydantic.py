@@ -49,7 +49,7 @@ def _require_pydantic_settings() -> None:
         ) from _PYDANTIC_SETTINGS_IMPORT_ERROR
 
 
-class HimitsubakoSettingsSource(PydanticBaseSettingsSource):
+class HimitsubakoSettingsSource(PydanticBaseSettingsSource):  # pyright: ignore[reportGeneralTypeIssues]
     """Pull settings field values from himitsubako backends.
 
     Construct one of these inside your settings model's
