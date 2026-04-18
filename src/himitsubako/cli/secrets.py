@@ -101,6 +101,9 @@ def set_secret(key: str, value: str | None) -> None:
         value = _prompt_google_oauth_value()
     elif value is None:
         value = click.prompt("Value", hide_input=True)
+    # Both branches above assign `value` to a non-None str; the assert
+    # makes that invariant visible to pyright (HMB-S036 spike finding).
+    assert value is not None
 
     try:
         resolved.set(key, value)
