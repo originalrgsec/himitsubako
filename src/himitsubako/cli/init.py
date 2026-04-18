@@ -104,16 +104,6 @@ def _build_sops_yaml(public_key: str) -> str:
     return yaml.dump(config, default_flow_style=False)
 
 
-def _build_envrc(secrets_file: str) -> str:
-    """Generate .envrc content that sources decrypted secrets.
-
-    Thin wrapper around himitsubako.direnv.generate_envrc — kept here so
-    existing v0.1.0 tests that import _build_envrc continue to work
-    while the canonical source moves into the direnv module.
-    """
-    return generate_envrc(secrets_file=secrets_file)
-
-
 def _build_config_yaml() -> str:
     """Generate .himitsubako.yaml with sops as default backend."""
     config = {
@@ -142,7 +132,7 @@ def init(force: bool) -> None:
     secrets_file = ".secrets.enc.yaml"
 
     _write_if_absent(project_dir / ".sops.yaml", _build_sops_yaml(public_key), force=force)
-    _write_if_absent(project_dir / ".envrc", _build_envrc(secrets_file), force=force)
+    _write_if_absent(project_dir / ".envrc", generate_envrc(secrets_file=secrets_file), force=force)
     _write_if_absent(project_dir / ".himitsubako.yaml", _build_config_yaml(), force=force)
 
     # Create empty encrypted secrets file
