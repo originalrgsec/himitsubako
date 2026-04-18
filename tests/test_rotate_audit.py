@@ -252,37 +252,22 @@ class TestAuditAppendSemantics:
         # Pre-create the dir to avoid a race on mkdir itself.
         log_path.parent.mkdir(mode=0o700, exist_ok=True)
 
-        def _writer(credential: str, log: str, vault: str) -> None:
-            from himitsubako.audit import write_audit_entry as write
-
-            for _ in range(50):
-                write(
-                    command="rotate",
-                    credential=credential,
-                    backend="env",
-                    outcome="success",
-                    vault_path=Path(vault),
-                    log_path=Path(log),
-                )
-
-        # fork is chosen deliberately: child processes inherit already-imported
-        # modules without re-import cost, and the _writer callable does not have
-        # to be picklable at module scope. If this test ever runs under
-        # pytest-xdist --forked or on a platform that forces spawn, _writer
-        # must be moved to module scope to become picklable.
-        ctx = multiprocessing.get_context("fork")
+        # spawn instead of fork — fork is unsafe in multithreaded processes
+        # (Python 3.12+ deprecates the macOS default). _audit_writer is
+        # module-level so it picklable for spawn. HMB-S034 MED-5.
+        ctx = multiprocessing.get_context("spawn")
         p1 = ctx.Process(
-            target=_writer,
+            target=_audit_writer,
             args=("PROC_A", str(log_path), str(tmp_path / ".himitsubako.yaml")),
         )
         p2 = ctx.Process(
-            target=_writer,
+            target=_audit_writer,
             args=("PROC_B", str(log_path), str(tmp_path / ".himitsubako.yaml")),
         )
         p1.start()
         p2.start()
-        p1.join(timeout=30)
-        p2.join(timeout=30)
+        p1.join(timeout=60)
+        p2.join(timeout=60)
         assert p1.exitcode == 0
         assert p2.exitcode == 0
 
@@ -292,6 +277,21 @@ class TestAuditAppendSemantics:
         for line in lines:
             entry = json.loads(line)
             assert entry["credential"] in ("PROC_A", "PROC_B")
+
+
+def _audit_writer(credential: str, log: str, vault: str) -> None:
+    """Module-level helper for the concurrent-writes test (picklable for spawn)."""
+    from himitsubako.audit import write_audit_entry as write
+
+    for _ in range(50):
+        write(
+            command="rotate",
+            credential=credential,
+            backend="env",
+            outcome="success",
+            vault_path=Path(vault),
+            log_path=Path(log),
+        )
 
 
 # ---------------------------------------------------------------------------

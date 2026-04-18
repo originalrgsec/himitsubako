@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 
 from himitsubako._redaction import redact_tokens as _redact_tokens
@@ -138,19 +139,46 @@ class BitwardenBackend:
         )
 
     def _unlock_via_command(self) -> str:
-        """Run the configured unlock_command and pipe to 'bw unlock --raw'."""
+        """Run the configured unlock_command and pipe to 'bw unlock --raw'.
+
+        unlock_command is parsed with shlex.split() and executed with
+        shell=False — this prevents shell injection when an attacker can
+        write .himitsubako.yaml (e.g., via a compromised dotfiles repo
+        or supply-chain). Common patterns like `pass show bitwarden/master`
+        continue to work; pipelines and shell substitutions do not, by
+        design — wrap them in a shell script if you need them.
+        Hardened in HMB-S034 per security-reviewer SEC-HIGH-3.
+        """
         if not self._unlock_command:
             raise BackendError("bitwarden", "no unlock_command configured")
 
         try:
+            argv = shlex.split(self._unlock_command)
+        except ValueError as exc:
+            raise BackendError(
+                "bitwarden",
+                f"unlock_command is not parseable as shell argv: {exc}",
+            ) from exc
+        if not argv:
+            raise BackendError(
+                "bitwarden",
+                "unlock_command parsed to an empty argv",
+            )
+
+        try:
             password_proc = subprocess.run(
-                self._unlock_command,
-                shell=True,
+                argv,
+                shell=False,
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=_BW_TIMEOUT_SECONDS,
             )
+        except FileNotFoundError as exc:
+            raise BackendError(
+                "bitwarden",
+                f"unlock_command binary not found: {argv[0]}",
+            ) from exc
         except subprocess.TimeoutExpired as exc:
             raise BackendError(
                 "bitwarden",

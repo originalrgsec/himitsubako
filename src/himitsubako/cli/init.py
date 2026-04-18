@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,13 @@ import yaml
 from himitsubako.direnv import generate_envrc
 
 _DEFAULT_KEYS_PATH = Path.home() / ".config" / "sops" / "age" / "keys.txt"
+_SUBPROCESS_TIMEOUT = 30
+_ENV_SOPS_BIN = "HIMITSUBAKO_SOPS_BIN"
+
+
+def _resolve_sops_bin() -> str:
+    """Resolve sops binary: env var > 'sops' on PATH (matches T-001)."""
+    return os.environ.get(_ENV_SOPS_BIN, "").strip() or "sops"
 
 
 def _ensure_age_key(keys_path: Path) -> str:
@@ -34,11 +42,14 @@ def _ensure_age_key(keys_path: Path) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_SUBPROCESS_TIMEOUT,
         )
     except FileNotFoundError as exc:
         raise click.ClickException(
             "age-keygen not found on PATH. Install: https://github.com/FiloSottile/age"
         ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise click.ClickException(f"age-keygen timed out after {_SUBPROCESS_TIMEOUT}s") from exc
 
     if result.returncode != 0:
         raise click.ClickException(f"age-keygen failed: {result.stderr}")
@@ -93,16 +104,6 @@ def _build_sops_yaml(public_key: str) -> str:
     return yaml.dump(config, default_flow_style=False)
 
 
-def _build_envrc(secrets_file: str) -> str:
-    """Generate .envrc content that sources decrypted secrets.
-
-    Thin wrapper around himitsubako.direnv.generate_envrc — kept here so
-    existing v0.1.0 tests that import _build_envrc continue to work
-    while the canonical source moves into the direnv module.
-    """
-    return generate_envrc(secrets_file=secrets_file)
-
-
 def _build_config_yaml() -> str:
     """Generate .himitsubako.yaml with sops as default backend."""
     config = {
@@ -131,24 +132,33 @@ def init(force: bool) -> None:
     secrets_file = ".secrets.enc.yaml"
 
     _write_if_absent(project_dir / ".sops.yaml", _build_sops_yaml(public_key), force=force)
-    _write_if_absent(project_dir / ".envrc", _build_envrc(secrets_file), force=force)
+    _write_if_absent(project_dir / ".envrc", generate_envrc(secrets_file=secrets_file), force=force)
     _write_if_absent(project_dir / ".himitsubako.yaml", _build_config_yaml(), force=force)
 
     # Create empty encrypted secrets file
     secrets_path = project_dir / secrets_file
     if not secrets_path.exists() or force:
-        # Write empty YAML, then encrypt with sops
+        # Write empty YAML, then encrypt with sops. Resolve the sops
+        # binary via env var so HIMITSUBAKO_SOPS_BIN is honored here as
+        # it is by SopsBackend (matches T-001 mitigation across all
+        # call sites).
+        sops_bin = _resolve_sops_bin()
         secrets_path.write_text(yaml.dump({}))
         try:
             result = subprocess.run(
-                ["sops", "--encrypt", "--in-place", str(secrets_path)],
+                [sops_bin, "--encrypt", "--in-place", str(secrets_path)],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=_SUBPROCESS_TIMEOUT,
             )
         except FileNotFoundError as exc:
             raise click.ClickException(
-                "sops not found on PATH. Install: https://github.com/getsops/sops"
+                f"sops binary not found at '{sops_bin}'. Install: https://github.com/getsops/sops"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise click.ClickException(
+                f"sops encrypt timed out after {_SUBPROCESS_TIMEOUT}s"
             ) from exc
 
         if result.returncode != 0:

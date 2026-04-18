@@ -5,6 +5,159 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-04-18
+
+Sprint 8 — Code Quality Scrub. Four-pass scrub toolchain run as the
+reference implementation for OWB Sprint 31 to reuse:
+`/simplify` → `/code-review` → `/refactor-clean` → pyright triage spike.
+Eight points across four stories. Net effect: tighter code, hardened
+subprocess + redaction surface, one public API removal, and pyright
+basic-mode adoption per DRN-073.
+
+### Added
+
+- **`docs/public-api-changes.md`.** Canonical record of public-API
+  changes between releases. Downstream consumers (open-workspace-builder,
+  home-ops, outbound-pipeline, ingest-pipeline, volcanix-papers,
+  content-production) read this file to absorb breaking changes in their
+  next sprint. Format: removed / renamed / signature-changed sections,
+  per release. Established by HMB-S035.
+- **`pyrightconfig.json`** at repo root. Basic mode per
+  [DRN-073](https://github.com/originalrgsec/...) and DRN-077;
+  `venvPath`/`venv` keys configured so pyright resolves project
+  dependencies from `.venv`. Three `reportUnknown*` rules suppressed to
+  prevent third-party stub gaps from drowning real signal. CI integration
+  is deferred to HMB-S037 (Sprint 9). Established by HMB-S036.
+- **`docs/pyright-basic-inventory.json`** and
+  **`docs/pyright-strict-inventory.json`.** Snapshot inventories from
+  the HMB-S036 spike — basic 25 errors, strict 1161 errors. Used to
+  size follow-up annotation work in Sprint 9-10.
+- **Redaction patterns for Google OAuth refresh tokens (`1//<...>`)
+  and age private keys (`AGE-SECRET-KEY-1<...>`).** `_redaction.py`
+  now runs three patterns in sequence; previously only matched generic
+  base64-shaped opaque tokens (40+ chars). Per HMB-S034 finding
+  SEC-MED-2.
+
+### Changed
+
+- **`bitwarden.unlock_command` is now parsed with `shlex.split()` and
+  executed with `shell=False`.** Shell metacharacters in the config value
+  no longer trigger command execution; `pass show <path>`-shape commands
+  continue to work; pipelines need a wrapper script. Closes the command
+  injection vector documented as T-022 residual risk. Per HMB-S034
+  finding SEC-HIGH-3 / HIGH-2.
+- **`hmb rotate-key` writes `.sops.yaml` atomically** via tempfile +
+  `os.replace`. A SIGKILL or disk-full mid-write previously left the
+  config truncated; now leaves either the old or new content, never
+  partial. Per HMB-S034 finding HIGH-1.
+- **`hmb rotate-key` and `hmb init` honor `HIMITSUBAKO_SOPS_BIN`** when
+  invoking `sops`. Previously hardcoded the bare `"sops"` PATH name,
+  bypassing the binary-resolution mitigation already in place for
+  `SopsBackend`. Per HMB-S034 finding SEC-HIGH-2.
+- **30s subprocess timeouts** added to `hmb rotate-key` (`sops
+  updatekeys`), `hmb init` (`age-keygen`, `sops --encrypt`). Previously
+  no timeout; a hung subprocess could block the CLI indefinitely. Per
+  HMB-S034 finding MED-3.
+- **SOPS stderr is redacted** before being interpolated into
+  `BackendError.detail`. Previously the raw subprocess stderr passed
+  through to callers and the audit log. Per HMB-S034 finding SEC-HIGH-1
+  (decrypt + encrypt) and SEC-MED-4 (`sops updatekeys`).
+- **Google OAuth `error_description` is redacted** before being included
+  in error messages. Google's `error_description` for some codes can
+  echo back submitted credentials. Per HMB-S034 finding MED-1.
+- **`_default_post` no longer embeds payload bytes** in
+  `BackendError.detail` on non-JSON OAuth response. Previously included
+  `payload[:200]!r` which could leak server-echoed request bytes
+  (including `client_secret`). Now reports byte count only. Per HMB-S034
+  findings SEC-MED-1 / MED-2.
+- **`hmb rotate-key --new-key`** now uses
+  `click.Path(exists=True, dir_okay=False, path_type=Path)` so click
+  handles the existence check at parse time. Exit code for a missing
+  file changes from 1 (ClickException) to 2 (click parse error). Per
+  HMB-S034 finding LOW-5.
+- **`_read_rotation_value` now strips `\r\n`, not just `\n`.** A
+  Windows-encoded credential file would have silently included a
+  trailing carriage return in the stored secret. Per HMB-S034 finding
+  LOW-1 / SEC-LOW-1.
+
+### Fixed
+
+- **Explicit `import urllib.error`** in `google_oauth_rotate.py`.
+  Previously relied on `urllib.request` indirectly importing
+  `urllib.error`; worked at runtime but a urllib internals change could
+  have broken it silently. Surfaced by HMB-S036 pyright spike.
+- **`set_secret` narrowing.** `value: str | None` after the
+  google-oauth / value-from-prompt branches is non-None at runtime; an
+  `assert` makes that visible to type checkers. Surfaced by HMB-S036
+  pyright spike.
+- **`generate_envrc()` and `_managed_block()` no longer duplicate the
+  sops eval line.** `generate_envrc()` now delegates to
+  `_managed_block()` instead of inlining the same construction. Output
+  byte-identical. Per HMB-S033 finding Q6.
+- **`_rotate_google_oauth(backend_name=)` parameter removed.** The
+  parameter was always `target.backend_name` at the caller; now derived
+  inside the function. Per HMB-S033 finding Q3.
+
+### Removed
+
+- **`himitsubako.backends.google_oauth.GoogleOAuthBackend.credential_name`
+  property** — removed without deprecation. Speculative API added in
+  HMB-S030 with no callers in any internal repo. Documented in
+  `docs/public-api-changes.md`. Per HMB-S035 finding B1.
+- **`himitsubako.cli.init._build_envrc`** — internal forwarder for
+  v0.1.0 tests that no longer exist. Single internal caller now uses
+  `direnv.generate_envrc` directly. Per HMB-S035 finding A1.
+- **`HimitsubakoSettingsSource.prepare_field_value`** — internal no-op
+  override that matched the `pydantic_settings.PydanticBaseSettingsSource`
+  base-class default for non-complex fields (we hardcode
+  `value_is_complex=False`). Per HMB-S035 finding A3.
+
+### Test infrastructure
+
+- New `tests/test_redaction.py` — 14 tests covering generic, Google
+  refresh token, and age private key patterns + combined-input cases.
+- 3 new tests in `tests/test_bitwarden_backend.py` — shell-injection
+  regressions for the `unlock_command` switch from `shell=True` to
+  `shlex.split() + shell=False`.
+- 3 new tests in `tests/test_cli_rotate.py` — `HIMITSUBAKO_SOPS_BIN`
+  honored, `.sops.yaml` atomic rollback on simulated disk-full,
+  `\r\n` strip from a Windows-encoded credential file.
+- `test_concurrent_writes_are_atomic` (audit log) switched from
+  `multiprocessing.get_context("fork")` to `spawn`. fork is unsafe in
+  multithreaded processes and Python 3.12+ deprecates the macOS default.
+  Worker callable moved to module scope to be picklable. Per HMB-S034
+  finding MED-5.
+
+### Stories
+
+| Story | Title | Pts | PR |
+|---|---|---|---|
+| HMB-S033 | `/simplify` skill scrub | 2 | #2 |
+| HMB-S034 | `/code-review` skill scrub | 2 | #3 |
+| HMB-S035 | `/refactor-clean` scrub + public-API changelog | 2 | #4 |
+| HMB-S036 | Pyright strict triage spike + DRN-077 | 2 | #5 |
+
+### Spawned backlog
+
+Per HMB-S034 finding triage, three follow-up stories filed:
+
+- **HMB-S039** — Fix age private-key file mode race in `hmb init` (HIGH-3, ~1pt).
+- **HMB-S040** — `hmb rotate-key` multi-rule `.sops.yaml` safety (MED-4, ~1pt).
+- **HMB-S041** — Code-review tech-debt bundle (MED-6, LOW-2/3/4, SEC-LOW-2/3/4, ~2pt).
+
+HMB-S037 (pyright pre-commit hook install) sized at 1pt based on HMB-S036
+spike data.
+
+### Test count
+
+- Sprint baseline: 254 (v0.7.0)
+- Sprint close: 274 (+20)
+- Coverage: 85.84% → 85.83% (no meaningful change)
+
+### Decisions
+
+- **DRN-077** — himitsubako adopts pyright in basic mode per DRN-073.
+
 ## [0.7.0] - 2026-04-14
 
 Sprint 7 exits maintenance mode with Google OAuth support and a P1 SOPS

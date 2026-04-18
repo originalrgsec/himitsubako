@@ -23,11 +23,13 @@ from __future__ import annotations
 import json
 import ssl
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from himitsubako._redaction import redact_tokens
 from himitsubako.errors import BackendError
 
 if TYPE_CHECKING:
@@ -142,8 +144,10 @@ def run_device_flow(
             )
         # Any other error — most commonly invalid_client, which happens when
         # the GCP project isn't configured for device flow — surface the
-        # remediation hint pointing at --browser.
-        description = token_response.get("error_description") or ""
+        # remediation hint pointing at --browser. Redact the description
+        # because Google's error_description for some error codes can
+        # contain submitted credentials (e.g., the client_id literal).
+        description = redact_tokens(str(token_response.get("error_description") or ""))
         raise BackendError(
             "google-oauth",
             f"device flow rejected by Google: {error}. {description} "
@@ -254,9 +258,13 @@ def _default_post(url: str, fields: dict[str, str]) -> dict[str, object]:
     try:
         parsed = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # Do not embed payload bytes in the exception. A misconfigured proxy
+        # or interception could echo back our request body (which contains
+        # client_secret on the form) inside an error page, which would then
+        # leak into BackendError.detail. Report only the size.
         raise BackendError(
             "google-oauth",
-            f"OAuth endpoint returned non-JSON payload (truncated): {payload[:200]!r}",
+            f"OAuth endpoint returned non-JSON payload ({len(payload)} bytes)",
         ) from exc
     if not isinstance(parsed, dict):
         raise BackendError(

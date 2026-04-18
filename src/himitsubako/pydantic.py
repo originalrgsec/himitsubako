@@ -91,15 +91,6 @@ class HimitsubakoSettingsSource(PydanticBaseSettingsSource):
         value = backend.get(lookup_key)
         return value, field_name, False
 
-    def prepare_field_value(
-        self,
-        field_name: str,
-        field: Any,
-        value: Any,
-        value_is_complex: bool,
-    ) -> Any:
-        return value
-
     def __call__(self) -> dict[str, Any]:
         """Return a dict of field names to resolved values.
 
