@@ -114,6 +114,18 @@ class TestRotateKeySecurityHardening:
         # The configured custom path must appear as the binary, not bare "sops".
         assert any(call[0] == "/opt/custom/sops" for call in captured_argv), captured_argv
 
+    def test_read_rotation_value_strips_crlf_from_file(self, tmp_path):
+        """LOW-1/SEC-LOW-1: rstrip should drop \\r\\n, not just \\n."""
+        from himitsubako.cli.rotate import _read_rotation_value
+
+        # Windows-style line ending — would silently store the \r before fix.
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("my-secret-value\r\n")
+
+        result = _read_rotation_value(str(secret_file))
+        assert result == "my-secret-value"
+        assert not result.endswith("\r")
+
     def test_rotate_key_atomic_write_of_sops_yaml(self, tmp_path):
         """HIGH-1: .sops.yaml must be written atomically (tempfile + replace)."""
         from himitsubako.cli import main

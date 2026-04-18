@@ -68,17 +68,13 @@ def _read_public_key(keys_path: Path) -> str:
 @click.option(
     "--new-key",
     required=True,
-    type=click.Path(exists=False),
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to the new age keys file.",
 )
 @click.option("--dry-run", is_flag=True, help="Show what would change without modifying files.")
-def rotate_key(new_key: str, dry_run: bool) -> None:
+def rotate_key(new_key: Path, dry_run: bool) -> None:
     """Re-encrypt secrets with a new age key."""
-    new_key_path = Path(new_key)
-    if not new_key_path.exists():
-        raise click.ClickException(f"new key file not found: {new_key}")
-
-    new_public_key = _read_public_key(new_key_path)
+    new_public_key = _read_public_key(new_key)
 
     # Find .sops.yaml and .himitsubako.yaml in cwd
     project_dir = Path.cwd()
@@ -288,7 +284,7 @@ def _read_rotation_value(value_from_file: str | None) -> str:
             click.echo(f"Error: file not found: {value_from_file}", err=True)
             sys.exit(2)
         try:
-            return file_path.read_text().rstrip("\n")
+            return file_path.read_text().rstrip("\r\n")
         except OSError as exc:
             click.echo(f"Error: cannot read {value_from_file}: {exc}", err=True)
             sys.exit(2)
@@ -300,7 +296,7 @@ def _read_rotation_value(value_from_file: str | None) -> str:
             err=True,
         )
         sys.exit(2)
-    return sys.stdin.read().rstrip("\n")
+    return sys.stdin.read().rstrip("\r\n")
 
 
 def _rotate_google_oauth(
