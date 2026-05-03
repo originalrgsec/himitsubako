@@ -2,9 +2,8 @@
 
 This file is the canonical record of public-API changes between consecutive
 himitsubako releases. Downstream consumers (open-workspace-builder,
-home-ops, outbound-pipeline, ingest-pipeline, volcanix-papers,
-content-production) read this file to absorb breaking changes in their next
-sprint.
+home-ops, and internal consumers) read this file to absorb breaking changes
+in their next sprint.
 
 ## v0.7.0 → v0.8.0
 

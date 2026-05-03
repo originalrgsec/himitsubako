@@ -117,10 +117,9 @@ basic-mode adoption per DRN-073.
 
 - **`docs/public-api-changes.md`.** Canonical record of public-API
   changes between releases. Downstream consumers (open-workspace-builder,
-  home-ops, outbound-pipeline, ingest-pipeline, volcanix-papers,
-  content-production) read this file to absorb breaking changes in their
-  next sprint. Format: removed / renamed / signature-changed sections,
-  per release. Established by HMB-S035.
+  home-ops, and internal consumers) read this file to absorb breaking
+  changes in their next sprint. Format: removed / renamed / signature-
+  changed sections, per release. Established by HMB-S035.
 - **`pyrightconfig.json`** at repo root. Basic mode per
   [DRN-073](https://github.com/originalrgsec/...) and DRN-077;
   `venvPath`/`venv` keys configured so pyright resolves project
