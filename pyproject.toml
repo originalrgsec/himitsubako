@@ -123,6 +123,13 @@ markers = [
     "direnv: tests requiring the direnv binary (HMB-S020)",
 ]
 
+# Supply-chain constraint on transitive dependency (2026-05-25 audit).
+# urllib3 2.6.3: CVE-2026-44431 (header leak), CVE-2026-44432 (decompression DoS).
+[tool.uv]
+constraint-dependencies = [
+    "urllib3>=2.7.0",
+]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
