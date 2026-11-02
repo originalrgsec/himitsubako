@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-11-02
+
+Release-pipeline fix. Supersedes 0.9.2, which was tagged but never
+published. Carries every 0.9.1 and 0.9.2 change.
+
+### Fixed
+
+- **PyPI publish: Metadata-Version 2.5.** `pypa/gh-action-pypi-publish`
+  v1.13.0 runs its own bundled twine 6.1.0 and rejected the wheel.
+  Bumped to v1.14.3 (bundles twine 7.0.0) in `release.yml` and
+  `testpypi.yml`.
+
 ## [0.9.2] - 2026-11-02
 
 Release-pipeline fix. Supersedes 0.9.1, which was tagged but never
