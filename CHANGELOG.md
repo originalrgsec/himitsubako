@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-11-02
+
+Security patch release. Dependency-only; no source or public API changes.
+
+### Security
+
+- **Dependency CVE remediation (2026-11-02 audit).** pip-audit over the
+  full lock (all extras and groups) reported 24 advisories across 11
+  packages. Direct-dependency floors raised and transitive floors added
+  to `[tool.uv] constraint-dependencies` so future re-locks cannot regress.
+  All resolved versions cleared the 7-day supply-chain quarantine.
+  - cryptography 46.0.7 → 50.0.2 (PYSEC-2026-3552/3553/3554, GHSA-537c-gmf6-5ccf)
+  - urllib3 2.7.0 → 2.8.0 (PYSEC-2026-4175/4176/4177)
+  - oauthlib 3.3.1 → 4.0.0 (PYSEC-2026-4114, GHSA-3jp2-3mrg-2vxc)
+  - pyasn1 0.6.3 → 0.6.4 (PYSEC-2026-3455/3456/3457)
+  - pydantic-settings 2.13.1 → 2.16.1 (GHSA-4xgf-cpjx-pc3j); `pydantic-settings` extra floor now `>=2.14.2`
+  - certifi 2026.2.25 → 2026.10.23 (PYSEC-2026-4320)
+  - idna 3.11 → 3.20 (PYSEC-2026-215)
+  - pytest 9.0.2 → 9.1.1 (PYSEC-2026-1845; dev only)
+  - mkdocs-material 9.7.6 → 9.8.0 (PYSEC-2026-3864; docs only)
+  - pymdown-extensions 10.21.2 → 12.3 (PYSEC-2026-2999/3609/3654; docs only)
+
+### Deferred
+
+- **pyasn1 0.6.5** (GHSA-2qm8-x737-gmw5, GHSA-fm9c-5rcf-2q5p,
+  GHSA-mm57-4v3p-rchx, GHSA-9m75-vc3g-4x39). Published 2026-10-27, so
+  it is inside the 7-day quarantine until 2026-11-03. pyasn1 is
+  transitive via `google-auth` (`[google]` extra only). Raise the
+  constraint floor to `>=0.6.5` in the next patch.
+
 ## [0.9.0] - 2026-04-18
 
 Sprint 9 — Sprint 8 Carry-out + Pyright Gate. Five stories totalling
