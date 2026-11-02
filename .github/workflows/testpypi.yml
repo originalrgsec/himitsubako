@@ -20,7 +20,7 @@
 #
 # Docker container action exception:
 #   Same as release.yml — pypa/gh-action-pypi-publish is pinned to a
-#   version tag (v1.13.0), not a commit SHA. See release.yml header for
+#   version tag (v1.14.3), not a commit SHA. See release.yml header for
 #   the full rationale.
 #
 # Action pins (tag at pinning time → commit SHA)
@@ -192,7 +192,7 @@ jobs:
       - name: Publish to TestPyPI via Trusted Publishers
         # Tag-pinned (NOT SHA-pinned) — see the "Docker container action
         # exception" note in the header.
-        uses: pypa/gh-action-pypi-publish@v1.13.0
+        uses: pypa/gh-action-pypi-publish@v1.14.3
         with:
           packages-dir: dist/
           repository-url: https://test.pypi.org/legacy/
