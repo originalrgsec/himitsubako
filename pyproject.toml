@@ -1,6 +1,6 @@
 [project]
 name = "himitsubako"
-version = "0.9.1"
+version = "0.9.2"
 description = "Multi-backend credential abstraction for solo Python developers. SOPS+age, macOS Keychain, Bitwarden CLI, direnv, env vars."
 readme = "README.md"
 license = { text = "MIT" }
@@ -89,7 +89,7 @@ publish = [
     # (supply-chain quarantine). Pin can be loosened once 1.4.3 ages
     # past the quarantine window.
     "build>=1.4,<2.0,!=1.4.3",
-    "twine>=6.2,<7.0",
+    "twine>=7.0,<8.0",
 ]
 
 [project.scripts]

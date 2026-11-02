@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from himitsubako.api import get, get_google_credentials, list_secrets, set_secret
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 __all__ = [
     "__version__",
